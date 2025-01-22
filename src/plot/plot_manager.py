@@ -18,6 +18,8 @@ class PlotManager:
         
         # 添加點擊事件處理
         self.figure.canvas.mpl_connect('button_press_event', self._on_plot_click)
+        # 添加縮放事件處理
+        self.figure.canvas.mpl_connect('scroll_event', self._on_scroll)
         self.click_callback = None
 
 
@@ -40,22 +42,22 @@ class PlotManager:
                                         height_ratios=[1, 1, 1, 2], 
                                         hspace=0)  # 將整體間距設為0，後續手動調整
             
-            # 調整圖表順序，將高度圖1放在最上方
+            # 調整圖表順序，將速度圖放在最上方
             self.axes = {
-                'r_scale1': self.figure.add_subplot(gs[0, 0]),  # 高度圖1放在最上方
-                'r_scale2': self.figure.add_subplot(gs[1, 0]),
-                'speed': self.figure.add_subplot(gs[2, 0]),
-                'position': self.figure.add_subplot(gs[3, 0])
+                'speed': self.figure.add_subplot(gs[0, 0]),     # 速度圖放在最上方
+                'r_scale1': self.figure.add_subplot(gs[1, 0]),  # R Scale 1 放在第二
+                'r_scale2': self.figure.add_subplot(gs[2, 0]),  # R Scale 2 放在第三
+                'position': self.figure.add_subplot(gs[3, 0])   # 位置圖放在最下方
             }
             
             # 繪製每個圖表
             for ax_name, ax in self.axes.items():
-                if ax_name == 'r_scale1':
-                    self._plot_data(ax, 'R Scale 1', '高度變化 1')
+                if ax_name == 'speed':
+                    self._plot_data(ax, 'G Speed', '')
+                elif ax_name == 'r_scale1':
+                    self._plot_data(ax, 'R Scale 1', '')
                 elif ax_name == 'r_scale2':
-                    self._plot_data(ax, 'R Scale 2', '高度變化 2')
-                elif ax_name == 'speed':
-                    self._plot_data(ax, 'G Speed', '速度變化')
+                    self._plot_data(ax, 'R Scale 2', '')
                 elif ax_name == 'position':
                     self._plot_position(ax)
             
@@ -79,14 +81,14 @@ class PlotManager:
             # 調整上面三個圖表，使其緊密相連
             self.axes['r_scale2'].set_position([
                 pos_r_scale2.x0,
-                pos_r_scale2.y0 + 0.02,  # 稍微上移
+                pos_r_scale2.y0 + 0.00,  # 稍微上移
                 pos_r_scale2.width,
                 pos_r_scale2.height
             ])
             
             self.axes['speed'].set_position([
                 pos_speed.x0,
-                pos_speed.y0 + 0.02,  # 稍微上移
+                pos_speed.y0 ,  # 稍微上移
                 pos_speed.width,
                 pos_speed.height
             ])
@@ -123,7 +125,7 @@ class PlotManager:
         ax.set_title(title, fontsize=10)
         
         # 只在速度圖表顯示X軸標籤
-        if column_name == 'G Speed':
+        if column_name == 'R Scale 2':
             ax.set_xlabel('數據點', fontsize=9)
         else:
             # 隱藏X軸標籤和刻度
@@ -133,7 +135,7 @@ class PlotManager:
         ax.set_ylabel(column_name, fontsize=9)
         ax.grid(True)
         if ax.get_lines():  # 只在有數據時顯示圖例
-            ax.legend()
+            ax.legend(loc='upper right')  # 將圖例設置在右上角
 
     def _plot_position(self, ax):
         """繪製位置軌跡"""
@@ -153,7 +155,7 @@ class PlotManager:
         ax.set_ylabel('緯度', fontsize=9)
         ax.grid(True)
         if ax.get_lines():  # 只在有數據時顯示圖例
-            ax.legend()
+            ax.legend(loc='upper right')  # 將圖例設置在右上角
 
     def _create_initial_plots(self):
         """創建初始圖表"""
@@ -508,3 +510,46 @@ class PlotManager:
         
         # 更新畫布
         self.figure.canvas.draw_idle()
+
+    def _on_scroll(self, event):
+        """處理滾輪縮放事件"""
+        try:
+            # 確保滾動發生在圖表區域內
+            if event.inaxes is None:
+                return
+
+            # 獲取當前軸的範圍
+            ax = event.inaxes
+            x_min, x_max = ax.get_xlim()
+            y_min, y_max = ax.get_ylim()
+            
+            # 設置縮放係數
+            base_scale = 1.1
+            
+            # 根據滾輪方向確定是放大還是縮小
+            if event.button == 'up':  # 放大
+                scale_factor = 1/base_scale
+            else:  # 縮小
+                scale_factor = base_scale
+            
+            # 計算以滑鼠位置為中心的新範圍
+            x_center = event.xdata
+            y_center = event.ydata
+            
+            # 計算新的範圍
+            new_x_min = x_center - (x_center - x_min) * scale_factor
+            new_x_max = x_center + (x_max - x_center) * scale_factor
+            new_y_min = y_center - (y_center - y_min) * scale_factor
+            new_y_max = y_center + (y_max - y_center) * scale_factor
+            
+            # 更新軸的範圍
+            ax.set_xlim(new_x_min, new_x_max)
+            ax.set_ylim(new_y_min, new_y_max)
+            
+            # 重繪圖表
+            self.figure.canvas.draw_idle()
+            
+        except Exception as e:
+            print(f"縮放處理時出錯: {str(e)}")
+            import traceback
+            traceback.print_exc()

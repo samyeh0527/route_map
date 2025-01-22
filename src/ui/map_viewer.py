@@ -168,6 +168,8 @@ class MapViewer(QMainWindow):
         # 設置全局字體以支持中文
         rcParams['font.family'] = ['Microsoft YaHei', 'SimHei', 'Arial Unicode MS']
         rcParams['axes.unicode_minus'] = False  # 正確顯示負號
+        rcParams['axes.titley'] = 1.0  # 移除標題的空間
+        rcParams['axes.titlepad'] = -14  # 調整標題的間距
         
         self.canvas = FigureCanvas(self.figure)
         plot_layout.addWidget(self.canvas)
