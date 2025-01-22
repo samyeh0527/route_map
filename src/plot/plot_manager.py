@@ -21,7 +21,16 @@ class PlotManager:
         # 添加縮放事件處理
         self.figure.canvas.mpl_connect('scroll_event', self._on_scroll)
         self.click_callback = None
-
+        self.is_setting_start_point = False
+        self.start_point_line = None
+        self.start_point = None
+        self.has_start_point_set = False
+        self.start_point_data = None
+        # 設定標記線的長度（1cm）
+        self.marker_size_cm = 1.0
+        self.info_text = None
+        self.crosshair_lines = []  # 儲存十字虛線
+        self.value_texts = []  # 新增：儲存所有數值文字對象
 
     def create_plots(self, highlight_index=None, highlight_range=None):
         """創建圖表，支持高亮顯示"""
@@ -31,6 +40,23 @@ class PlotManager:
                 print("錯誤: 沒有數據")
                 return
             
+            # 暫存起點資訊
+            temp_start_point_data = self.start_point_data if self.has_start_point_set else None
+            
+            # 清除所有標記
+            if self.info_text is not None:
+                self.info_text.remove()
+                self.info_text = None
+            
+            for line in self.crosshair_lines:
+                line.remove()
+            self.crosshair_lines = []
+            
+            for text_obj in self.value_texts:
+                text_obj.remove()
+            self.value_texts = []
+            
+            # 清除圖表但保持起點資訊
             self.figure.clear()
             
             # 設置中文字體
@@ -101,11 +127,17 @@ class PlotManager:
                 pos_position.height
             ])
             
+            # 如果有起點資訊，重新繪製起點線
+            if temp_start_point_data is not None:
+                self.start_point_data = temp_start_point_data
+                self.has_start_point_set = True
+                self._draw_start_point_line()
+            
             self.figure.canvas.draw()
             print("\n=== 圖表創建完成 ===")
             
         except Exception as e:
-            print(f"\n!!! 創建圖表時出錯: {str(e)}")
+            print(f"創建圖表時出錯: {str(e)}")
             import traceback
             traceback.print_exc()
 
@@ -359,75 +391,144 @@ class PlotManager:
 
     def _on_plot_click(self, event):
         """處理圖表點擊事件"""
-        if event.inaxes is None or self.click_callback is None or not self.data_list:
+        if event.inaxes is None:
             return
-            
+
+        # 處理起點設定
+        if self.is_setting_start_point and event.inaxes == self.axes['position']:
+            self._set_start_point(event.xdata, event.ydata)
+            self.is_setting_start_point = False
+            return
+        
+        # 處理一般的點擊事件
         try:
-            print("\n=== 處理圖表點擊 ===")
-            print(f"點擊座標: x={event.xdata}, y={event.ydata}")
-            
-            # 獲取點擊的軸對象
-            clicked_ax = event.inaxes
-            
-            # 對於位置圖的特殊處理
-            if clicked_ax == self.axes['position']:
-                # 找到最近的點
+            if event.inaxes == self.axes['position']:
+                # 找到最近的數據點
+                nearest_point = None
                 min_distance = float('inf')
-                nearest_range = 0
-                nearest_idx = 0
+                nearest_data = None
                 
-                for range_idx, data in enumerate(self.data_list):
-                    if len(data) == 0 or 'Longitude' not in data.columns or 'Latitude' not in data.columns:
-                        continue
+                for data in self.data_list:
+                    if 'Longitude' in data.columns and 'Latitude' in data.columns:
+                        distances = ((data['Longitude'] - event.xdata) ** 2 + 
+                                   (data['Latitude'] - event.ydata) ** 2) ** 0.5
+                        idx = distances.argmin()
+                        distance = distances.iloc[idx]
                         
-                    distances = np.sqrt(
-                        (data['Longitude'] - event.xdata) ** 2 + 
-                        (data['Latitude'] - event.ydata) ** 2
+                        if distance < min_distance:
+                            min_distance = distance
+                            nearest_point = {
+                                'longitude': data['Longitude'].iloc[idx],
+                                'latitude': data['Latitude'].iloc[idx],
+                                'index': idx
+                            }
+                            if 'G Speed' in data.columns:
+                                nearest_point['speed'] = data['G Speed'].iloc[idx]
+                            if 'R Scale 1' in data.columns:
+                                nearest_point['r_scale1'] = data['R Scale 1'].iloc[idx]
+                            if 'R Scale 2' in data.columns:
+                                nearest_point['r_scale2'] = data['R Scale 2'].iloc[idx]
+                            nearest_data = data
+                
+                if nearest_point:
+                    # 顯示資訊和十字虛線
+                    info_text = f"位置: ({nearest_point['longitude']:.6f}, {nearest_point['latitude']:.6f})\n"
+                    if 'speed' in nearest_point:
+                        info_text += f"速度: {nearest_point['speed']:.2f}\n"
+                    if 'r_scale1' in nearest_point:
+                        info_text += f"R Scale 1: {nearest_point['r_scale1']:.2f}\n"
+                    if 'r_scale2' in nearest_point:
+                        info_text += f"R Scale 2: {nearest_point['r_scale2']:.2f}"
+                    
+                    self._show_info_and_crosshair(
+                        nearest_point['longitude'], 
+                        nearest_point['latitude'], 
+                        info_text,
+                        nearest_point['index'],
+                        nearest_data
                     )
-                    
-                    current_min_idx = distances.argmin()
-                    current_min_distance = distances[current_min_idx]
-                    
-                    if current_min_distance < min_distance:
-                        min_distance = current_min_distance
-                        nearest_range = range_idx
-                        nearest_idx = current_min_idx
-                
-                print(f"位置圖最近點: 範圍={nearest_range}, 索引={nearest_idx}")
-                self.click_callback(nearest_range, nearest_idx)
-                
-            # 對於其他圖表的處理
-            else:
-                # 找到點擊的是哪個圖表
-                for ax_name, ax in self.axes.items():
-                    if ax == clicked_ax:
-                        print(f"點擊的圖表: {ax_name}")
-                        # 找到最近的數據點
-                        clicked_x = event.xdata
-                        min_distance = float('inf')
-                        nearest_range = 0
-                        nearest_idx = 0
-                        
-                        for range_idx, data in enumerate(self.data_list):
-                            if len(data) == 0:
-                                continue
-                                
-                            # 使用數據索引作為 x 座標
-                            distances = np.abs(np.arange(len(data)) - clicked_x)
-                            current_min_idx = distances.argmin()
-                            current_min_distance = distances[current_min_idx]
-                            
-                            if current_min_distance < min_distance:
-                                min_distance = current_min_distance
-                                nearest_range = range_idx
-                                nearest_idx = current_min_idx
-                        
-                        print(f"找到最近點: 範圍={nearest_range}, 索引={nearest_idx}")
-                        self.click_callback(nearest_range, nearest_idx)
-                        break
-                
+        
         except Exception as e:
-            print(f"處理圖表點擊時出錯: {str(e)}")
+            print(f"處理點擊事件時出錯: {str(e)}")
+            import traceback
+            traceback.print_exc()
+
+    def _show_info_and_crosshair(self, x, y, text, index, data):
+        """在圖表上顯示資訊和十字虛線"""
+        try:
+            # 清除舊的資訊文字和十字虛線
+            if self.info_text is not None:
+                self.info_text.remove()
+                self.info_text = None
+            
+            for line in self.crosshair_lines:
+                line.remove()
+            self.crosshair_lines = []
+            
+            # 清除舊的數值文字
+            for text_obj in self.value_texts:
+                text_obj.remove()
+            self.value_texts = []
+            
+            # 在位置圖上顯示資訊和十字虛線
+            ax = self.axes['position']
+            self.info_text = ax.text(
+                x, y, text,
+                bbox=dict(facecolor='white', alpha=0.8, edgecolor='none'),
+                verticalalignment='bottom',
+                horizontalalignment='right'
+            )
+            
+            # 添加紅色十字虛線到位置圖
+            h_line = ax.axhline(y=y, color='red', linestyle='--', alpha=0.5)
+            v_line = ax.axvline(x=x, color='red', linestyle='--', alpha=0.5)
+            self.crosshair_lines.extend([h_line, v_line])
+            
+            # 在其他圖表上添加垂直線和數值文字
+            for ax_name, ax in self.axes.items():
+                if ax_name != 'position':
+                    v_line = ax.axvline(x=index, color='red', linestyle='--', alpha=0.5)
+                    self.crosshair_lines.append(v_line)
+                    
+                    # 獲取當前值和圖表標題
+                    value = None
+                    title = ""
+                    if ax_name == 'speed' and 'G Speed' in data.columns:
+                        value = data['G Speed'].iloc[index]
+                        title = "G Speed"
+                    elif ax_name == 'r_scale1' and 'R Scale 1' in data.columns:
+                        value = data['R Scale 1'].iloc[index]
+                        title = "R Scale 1"
+                    elif ax_name == 'r_scale2' and 'R Scale 2' in data.columns:
+                        value = data['R Scale 2'].iloc[index]
+                        title = "R Scale 2"
+                    
+                    if value is not None:
+                        # 在左上角顯示數值，確保在圖表內部
+                        ylim = ax.get_ylim()
+                        y_pos = ylim[1] - (ylim[1] - ylim[0]) * 0.05  # 距離頂部5%
+                        
+                        text_obj = ax.text(
+                            0.02, 0.95,  # 使用相對座標（左上角）
+                            f'{title}: {value:.2f}',
+                            transform=ax.transAxes,  # 使用軸的相對座標系統
+                            bbox=dict(
+                                facecolor='white',
+                                edgecolor='none',
+                                alpha=0.8,
+                                pad=3
+                            ),
+                            verticalalignment='top',
+                            horizontalalignment='left',
+                            zorder=1000  # 確保文字在最上層
+                        )
+                        self.value_texts.append(text_obj)
+            
+            # 更新圖表
+            self.figure.canvas.draw_idle()
+            
+        except Exception as e:
+            print(f"顯示資訊和十字虛線時出錯: {str(e)}")
             import traceback
             traceback.print_exc()
 
@@ -553,3 +654,82 @@ class PlotManager:
             print(f"縮放處理時出錯: {str(e)}")
             import traceback
             traceback.print_exc()
+
+    def enable_start_point_selection(self):
+        """啟用起點選擇模式"""
+        self.is_setting_start_point = True
+        print("請在位置軌跡圖上選擇起點")
+
+    def _set_start_point(self, x, y):
+        """設定起點並繪製垂直標記線"""
+        try:
+            # 清除舊的起點線（如果存在）
+            if self.start_point_line is not None:
+                for line in self.start_point_line:
+                    line.remove()
+                self.start_point_line = None
+
+            # 儲存起點座標和相關資訊
+            self.start_point = (x, y)
+            self.has_start_point_set = True
+            
+            # 儲存當前的軸範圍
+            ax = self.axes['position']
+            self.start_point_data = {
+                'x': x,
+                'y': y,
+                'y_range': abs(ax.get_ylim()[1] - ax.get_ylim()[0]),
+                'bbox': ax.get_window_extent().transformed(self.figure.dpi_scale_trans.inverted())
+            }
+
+            # 繪製起點線
+            self._draw_start_point_line()
+
+            print(f"起點已設定在: 經度={x:.6f}, 緯度={y:.6f}")
+
+        except Exception as e:
+            print(f"設定起點時出錯: {str(e)}")
+            import traceback
+            traceback.print_exc()
+
+    def _draw_start_point_line(self):
+        """繪製起點標記線"""
+        if self.start_point_data is None:
+            return
+
+        try:
+            ax = self.axes['position']
+            x, y = self.start_point_data['x'], self.start_point_data['y']
+            
+            # 計算1cm在數據單位中的長度
+            y_range = abs(ax.get_ylim()[1] - ax.get_ylim()[0])
+            bbox = ax.get_window_extent().transformed(self.figure.dpi_scale_trans.inverted())
+            cm_to_inch = 0.393701
+            y_data_per_cm = (y_range / bbox.height) * cm_to_inch
+
+            # 繪製1cm長的垂直綠色標記線
+            if self.start_point_line is not None:
+                for line in self.start_point_line:
+                    line.remove()
+            
+            self.start_point_line = []
+            line = ax.plot([x, x], [y, y + y_data_per_cm], 
+                         color='green', linewidth=2, zorder=5)[0]
+            self.start_point_line.append(line)
+
+            # 更新圖表
+            self.figure.canvas.draw_idle()
+
+        except Exception as e:
+            print(f"繪製起點線時出錯: {str(e)}")
+            import traceback
+            traceback.print_exc()
+
+    def on_resize(self, event):
+        """處理圖表大小改變事件"""
+        if self.has_start_point_set:
+            self._draw_start_point_line()
+
+    def has_start_point(self):
+        """檢查是否已設定起點"""
+        return self.has_start_point_set

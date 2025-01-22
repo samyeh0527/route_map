@@ -102,10 +102,10 @@ class MapViewer(QMainWindow):
         button_group = QHBoxLayout()
         button_group.setSpacing(10)
         
-        add_range_button = QPushButton("添加範圍")
+        self.set_start_button = QPushButton("設定起點")
         
         # 設置按鈕樣式
-        for button in [self.load_button, add_range_button, self.update_button]:
+        for button in [self.load_button, self.set_start_button, self.update_button]:
             button.setStyleSheet("""
                 QPushButton {
                     background-color: #007bff;
@@ -125,7 +125,7 @@ class MapViewer(QMainWindow):
             """)
         
         button_group.addWidget(self.load_button)
-        button_group.addWidget(add_range_button)
+        button_group.addWidget(self.set_start_button)
         button_group.addWidget(self.update_button)
         button_group.addStretch()
         
@@ -141,8 +141,9 @@ class MapViewer(QMainWindow):
         # 添加到左側布局
         self.left_layout.addWidget(control_panel)
         
-        # 連接添加範圍按鈕信號
-        add_range_button.clicked.connect(self.add_range_group)
+        # 連接設定起點按鈕信號
+        self.set_start_button.clicked.connect(self.start_setting_start_point)
+        self.is_setting_start_point = False
         
         print("控制面板設置完成：按鈕已添加到布局")
 
@@ -346,6 +347,11 @@ class MapViewer(QMainWindow):
                 # 更新時間顯示
                 self._calculate_time_difference()
                 
+                # 重置起點設定
+                self.set_start_button.setEnabled(True)
+                self.set_start_button.setText("設定起點")
+                self.is_setting_start_point = False
+                
                 print("=== 數據更新完成 ===")
                 
             except Exception as e:
@@ -537,3 +543,29 @@ class MapViewer(QMainWindow):
                     self.plot_manager.create_plots(highlight_index=index, highlight_range=range_idx)
             except Exception as e:
                 print(f"延遲高亮顯示時出錯: {str(e)}")
+
+    def start_setting_start_point(self):
+        """開始設定起點模式"""
+        if self.plot_manager.has_start_point():
+            # 顯示警告對話框
+            reply = QMessageBox.warning(
+                self,
+                "警告",
+                "確定要重新設定起點位置嗎？",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No
+            )
+            
+            if reply == QMessageBox.No:
+                return
+        
+        self.is_setting_start_point = True
+        self.set_start_button.setText("請在位置軌跡圖上選擇起點")
+        self.plot_manager.enable_start_point_selection()
+
+    def _on_plot_click(self, event):
+        """處理圖表點擊事件"""
+        if self.plot_manager.is_setting_start_point:
+            self.set_start_button.setText("設定起點")
+            self.set_start_button.setEnabled(False)  # 鎖住按鈕
+            self.is_setting_start_point = False
