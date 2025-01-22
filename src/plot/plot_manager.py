@@ -96,7 +96,7 @@ class PlotManager:
             # 調整位置軌跡圖，增加與速度圖的間距
             self.axes['position'].set_position([
                 pos_position.x0,
-                pos_position.y0 - 0.1,  # 增加與速度圖的間距
+                pos_position.y0 -0.04,  # 增加與速度圖的間距
                 pos_position.width,
                 pos_position.height
             ])

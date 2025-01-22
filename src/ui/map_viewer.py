@@ -255,97 +255,16 @@ class MapViewer(QMainWindow):
         title_layout.addStretch()
         title_layout.addWidget(time_label)
         
-        # 創建輸入區域
-        input_layout = QHBoxLayout()
-        input_layout.setSpacing(8)
-        
-        # 起始值
-        start_container = QWidget()
-        start_layout = QVBoxLayout(start_container)
-        start_layout.setContentsMargins(0, 0, 0, 0)
-        start_layout.setSpacing(2)
-        
-        start_label = QLabel("起始位置")
-        start_label.setStyleSheet("color: #6c757d; font-size: 11px;")
-        
-        start_spin = QSpinBox()
-        start_spin.setButtonSymbols(QSpinBox.NoButtons)
-        start_spin.setRange(0, 99999)
-        start_spin.setStyleSheet("""
-            QSpinBox {
-                background-color: #f8f9fa;
-                border: 1px solid #ced4da;
-                border-radius: 4px;
-                padding: 4px 8px;
-                min-width: 100px;
-            }
-            QSpinBox:focus {
-                border-color: #80bdff;
-                background-color: white;
-            }
-        """)
-        
-        start_layout.addWidget(start_label)
-        start_layout.addWidget(start_spin)
-        
-        # 結束值
-        end_container = QWidget()
-        end_layout = QVBoxLayout(end_container)
-        end_layout.setContentsMargins(0, 0, 0, 0)
-        end_layout.setSpacing(2)
-        
-        end_label = QLabel("結束位置")
-        end_label.setStyleSheet("color: #6c757d; font-size: 11px;")
-        
-        end_spin = QSpinBox()
-        end_spin.setButtonSymbols(QSpinBox.NoButtons)
-        end_spin.setRange(0, 99999)
-        end_spin.setStyleSheet("""
-            QSpinBox {
-                background-color: #f8f9fa;
-                border: 1px solid #ced4da;
-                border-radius: 4px;
-                padding: 4px 8px;
-                min-width: 100px;
-            }
-            QSpinBox:focus {
-                border-color: #80bdff;
-                background-color: white;
-            }
-        """)
-        
-        end_layout.addWidget(end_label)
-        end_layout.addWidget(end_spin)
-        
-        # 設置最大值和預設值（如果已有數據）
-        if hasattr(self, 'full_data'):
-            max_value = len(self.full_data) - 1  # 最後一筆索引
-            start_spin.setMaximum(max_value)
-            end_spin.setMaximum(max_value)
-            
-            # 獲取前一個範圍組的結束值作為預設值
-            if group_id > 0 and self.range_groups:
-                prev_end_value = self.range_groups[-1]['end_spin'].value()
-                end_spin.setValue(prev_end_value)
-            else:
-                end_spin.setValue(max_value)  # 第一個範圍組預設為最後一筆
-        
-        # 添加到輸入布局
-        input_layout.addWidget(start_container)
-        input_layout.addWidget(end_container)
-        input_layout.addStretch()
-        
         # 添加所有元素到主布局
         range_v_layout.addLayout(title_layout)
-        range_v_layout.addLayout(input_layout)
         
-        # 保存範圍組
+        # 保存範圍組（使用隱藏的起始和結束位置）
         self.range_groups.append({
             'id': group_id,
             'container': range_container,
-            'start_spin': start_spin,
-            'end_spin': end_spin,
-            'time_label': time_label  # 添加時間標籤到範圍組數據中
+            'start': 0,  # 默認起始位置
+            'end': 0,    # 默認結束位置
+            'time_label': time_label
         })
         
         # 添加到控制面板
@@ -374,13 +293,23 @@ class MapViewer(QMainWindow):
             valid_ranges = []
             max_idx = len(self.full_data)
             
-            for group in self.range_groups:
-                start = group['start_spin'].value()
-                end = group['end_spin'].value()
+            # 為每個範圍組設置默認的起始和結束位置
+            for i, group in enumerate(self.range_groups):
+                if i == 0:  # 第一個範圍
+                    start = 0
+                    end = max_idx // len(self.range_groups)
+                else:  # 其他範圍
+                    prev_end = self.range_groups[i-1]['end']
+                    start = prev_end
+                    end = min(start + (max_idx // len(self.range_groups)), max_idx)
                 
-                print(f"範圍 {group['id'] + 1}: {start} 到 {end}")
+                group['start'] = start
+                group['end'] = end
                 
-                # 驗證範圍
+                print(f"\n範圍 {group['id'] + 1}:")
+                print(f"起始位置: {start}")
+                print(f"結束位置: {end}")
+                
                 if start >= end:
                     print(f"警告：範圍 {group['id'] + 1} 起始位置必須小於結束位置")
                     continue
@@ -475,8 +404,8 @@ class MapViewer(QMainWindow):
         """計算每個範圍的時間差"""
         try:
             for group in self.range_groups:
-                start = group['start_spin'].value()
-                end = group['end_spin'].value()
+                start = group['start']
+                end = group['end']
                 
                 if end - start <= 0:
                     group['time_label'].setText("時間: 無效範圍")
@@ -536,9 +465,8 @@ class MapViewer(QMainWindow):
             
             # 設置所有範圍組的最大值和預設值
             for group in self.range_groups:
-                group['start_spin'].setMaximum(max_value)
-                group['end_spin'].setMaximum(max_value)
-                group['end_spin'].setValue(max_value)  # 所有範圍組的結束位置都預設為最後一筆
+                group['start'] = 0
+                group['end'] = max_value
             
             # 初始化圖表管理器的數據
             self.plot_manager.data_list = []
@@ -563,7 +491,7 @@ class MapViewer(QMainWindow):
             # 更新對應範圍的 SpinBox
             if 0 <= range_idx < len(self.range_groups):
                 group = self.range_groups[range_idx]
-                start = group['start_spin'].value()
+                start = group['start']
                 # 計算實際數據索引
                 actual_idx = start + data_idx
                 # 高亮顯示
@@ -585,8 +513,8 @@ class MapViewer(QMainWindow):
             
         try:
             group = self.range_groups[range_idx]
-            start = group['start_spin'].value()
-            end = group['end_spin'].value()
+            start = group['start']
+            end = group['end']
             
             if start <= data_idx < end:
                 self.pending_highlight_index = data_idx
