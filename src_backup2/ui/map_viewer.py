@@ -503,19 +503,24 @@ class MapViewer(QMainWindow):
                 QMessageBox.warning(self, "警告", "請先載入數據")
                 return
             
-            # 清除軌跡圖上的標示點
+            # 清除所有標示點
             if hasattr(self, 'track_point') and self.track_point:
                 self.track_point.remove()
                 self.track_point = None
             
-            # 清除起點標記
-            self.plot_manager.clear_start_point()
+            # 清除起點標記和高亮點
+            self.plot_manager.clear_all_markers()  # 新增方法調用
+            
+            # 清除列表
+            self.check_list.clear()
             
             # 更新圖表
             self.plot_manager.data_list = [self.full_data]  # 使用完整數據
             self.plot_manager.create_plots()
-            self.canvas.draw()  # 確保重新繪製圖表
-            self.track_canvas.draw()  # 確保重新繪製軌跡圖
+            
+            # 確保重新繪製所有圖表
+            self.canvas.draw()
+            self.track_canvas.draw()
             
             print("圖表更新完成")
             
@@ -803,3 +808,45 @@ class MapViewer(QMainWindow):
             print(f"更新地圖時出錯: {str(e)}")
             import traceback
             traceback.print_exc()
+
+    def set_start_point(self, event):
+        """設定起點"""
+        try:
+            if not hasattr(self, 'full_data'):
+                QMessageBox.warning(self, "警告", "請先載入數據")
+                return
+            
+            # 清除所有現有標記
+            self.plot_manager.clear_all_markers()
+            
+            # 獲取點擊位置的座標
+            x, y = event.xdata, event.ydata
+            if x is None or y is None:
+                return
+            
+            # 設置新的起點
+            self.plot_manager.set_start_point(x, y)
+            self.canvas.draw()
+            self.track_canvas.draw()
+            
+        except Exception as e:
+            print(f"設定起點時出錯: {str(e)}")
+            QMessageBox.critical(self, "錯誤", f"設定起點時出錯：{str(e)}")
+
+    def update_data_list(self, new_data_list):
+        """更新數據列表"""
+        try:
+            # 清除所有標記
+            self.plot_manager.clear_all_markers()
+            
+            # 更新數據列表
+            self.plot_manager.data_list = new_data_list
+            self.plot_manager.create_plots()
+            
+            # 重繪圖表
+            self.canvas.draw()
+            self.track_canvas.draw()
+            
+        except Exception as e:
+            print(f"更新數據列表時出錯: {str(e)}")
+            QMessageBox.critical(self, "錯誤", f"更新數據列表時出錯：{str(e)}")

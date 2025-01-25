@@ -1140,3 +1140,20 @@ class PlotManager:
             import traceback
             traceback.print_exc()
             return []
+
+    def clear_all_markers(self):
+        """清除所有標記點"""
+        # 清除起點標記
+        self.clear_start_point()
+        
+        # 清除高亮點
+        if hasattr(self, 'highlight_point'):
+            for ax in self.axes:
+                if hasattr(ax, 'highlight_point') and ax.highlight_point:
+                    ax.highlight_point.remove()
+                    ax.highlight_point = None
+        
+        # 清除其他可能的標記
+        if hasattr(self, 'track_highlight_point') and self.track_highlight_point:
+            self.track_highlight_point.remove()
+            self.track_highlight_point = None
