@@ -47,6 +47,7 @@ class PlotManager:
         self.value_texts = []  # 儲存所有數值文字對象
         self.track_point = None
         self.range_update_callback = None  # 添加新的回調屬性
+        self.range_highlights = {}  # 存儲範圍高亮對象
 
     def create_plots(self, highlight_index=None, highlight_range=None):
         """創建圖表，支持高亮顯示"""
@@ -1157,3 +1158,39 @@ class PlotManager:
         if hasattr(self, 'track_highlight_point') and self.track_highlight_point:
             self.track_highlight_point.remove()
             self.track_highlight_point = None
+
+    def highlight_range(self, start_index, end_index, range_id):
+        """在主圖表上高亮顯示指定範圍"""
+        try:
+            # 為每個子圖添加範圍標示
+            highlights = []
+            colors = ['#FFD700', '#98FB98', '#87CEFA', '#DDA0DD', '#F08080']  # 不同範圍使用不同顏色
+            color = colors[range_id % len(colors)]  # 循環使用顏色
+            
+            # 獲取圖表中的所有子圖
+            axes = self.figure.get_axes()
+            
+            for ax in axes:
+                highlight = ax.axvspan(start_index, end_index, 
+                                     alpha=0.2, 
+                                     color=color,
+                                     zorder=1)  # 確保高亮在數據線後面
+                highlights.append(highlight)
+            
+            # 存儲高亮對象以便後續移除
+            self.range_highlights[range_id] = highlights
+            
+        except Exception as e:
+            print(f"添加範圍高亮時出錯: {str(e)}")
+    
+    def remove_range_highlight(self, range_id):
+        """移除指定範圍的高亮顯示"""
+        try:
+            if range_id in self.range_highlights:
+                # 移除所有子圖中的高亮
+                for highlight in self.range_highlights[range_id]:
+                    highlight.remove()
+                del self.range_highlights[range_id]
+                
+        except Exception as e:
+            print(f"移除範圍高亮時出錯: {str(e)}")

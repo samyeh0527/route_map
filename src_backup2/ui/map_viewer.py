@@ -269,12 +269,35 @@ class MapViewer(QMainWindow):
         main_layout.setStretch(2, 1)  # 底部區域佔1
 
     def on_item_changed(self, item):
-        
-        if item.checkState() == Qt.Checked:
-            print(f"選項'{item.text()} \n {item.data(Qt.UserRole)}' 選取")
-        else:
-            print(f"選項 '{item.text()} \n {item.data(Qt.UserRole)}' 取消")
-
+        """處理列表項勾選狀態變化"""
+        try:
+            # 獲取項目數據
+            item_data = item.data(Qt.UserRole)
+            if not item_data:
+                return
+            
+            # 解析起始和結束索引
+            description = item_data['description']
+            indices = {}
+            for pair in description.split(','):
+                key, value = pair.split(':')
+                indices[key] = int(value)
+            
+            start_index = indices['start_index']
+            end_index = indices['end_index']
+            
+            if item.checkState() == Qt.Checked:
+                # 當項目被勾選時，在主圖表上標示範圍
+                self.plot_manager.highlight_range(start_index, end_index, item_data['id'])
+            else:
+                # 當項目取消勾選時，移除對應的範圍標示
+                self.plot_manager.remove_range_highlight(item_data['id'])
+            
+            # 重繪圖表
+            self.canvas.draw()
+            
+        except Exception as e:
+            print(f"處理列表項變化時出錯: {str(e)}")
 
     def _setup_control_panel(self):
         """設置控制面板"""
