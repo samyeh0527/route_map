@@ -811,8 +811,8 @@ class PlotManager:
             track_canvas.draw()
             
             # 呼叫 analyze_ranges 進行分析
-            self.analyze_ranges(index)
-            
+            analyze =self.analyze_ranges(index)
+            print(analyze,"\n",type(analyze),"\n",len(analyze))  
             print(f"起點已設定在索引: {index}")
             
         except Exception as e:

@@ -179,7 +179,9 @@ class MapViewer(QMainWindow):
                 background-color: #f8f9fa;
             }
         """)
-        
+        # itemChanged 訊號
+        self.check_list.itemChanged.connect(self.on_item_changed)
+
         # 在底部右側添加位置軌跡圖
         track_plot_container = QWidget()
         track_plot_container.setStyleSheet("""
@@ -265,6 +267,14 @@ class MapViewer(QMainWindow):
         main_layout.addWidget(bottom_widget)
         main_layout.setStretch(1, 2)  # 主圖表區域佔2
         main_layout.setStretch(2, 1)  # 底部區域佔1
+
+    def on_item_changed(self, item):
+        
+        if item.checkState() == Qt.Checked:
+            print(f"選項'{item.text()}' 選取")
+        else:
+            print(f"選項 '{item.text()}' 取消")
+
 
     def _setup_control_panel(self):
         """設置控制面板"""
@@ -777,9 +787,9 @@ class MapViewer(QMainWindow):
             item_text = f"範圍{range_info['range_number']}, 時間 {range_info['duration_str']}"
             item = QListWidgetItem(item_text)
             item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
-            item.setCheckState(Qt.Checked)
+            item.setCheckState(Qt.Unchecked)
             self.check_list.addItem(item)
-
+            
     def update_map(self):
         """更新地圖顯示"""
         try:
