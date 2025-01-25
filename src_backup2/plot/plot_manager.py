@@ -1144,26 +1144,39 @@ class PlotManager:
 
     def clear_all_markers(self):
         """清除所有標記點"""
-        # 清除起點標記
-        self.clear_start_point()
-        
-        # 清除高亮點
-        if hasattr(self, 'highlight_point'):
-            for ax in self.axes:
-                if hasattr(ax, 'highlight_point') and ax.highlight_point:
-                    ax.highlight_point.remove()
-                    ax.highlight_point = None
-        
-        # 清除其他可能的標記
-        if hasattr(self, 'track_highlight_point') and self.track_highlight_point:
-            self.track_highlight_point.remove()
-            self.track_highlight_point = None
+        try:
+            # 清除起點標記
+            self.clear_start_point()
+            
+            # 清除高亮點
+            if hasattr(self, 'highlight_point'):
+                for ax in self.axes:
+                    if hasattr(ax, 'highlight_point') and ax.highlight_point:
+                        ax.highlight_point.remove()
+                        ax.highlight_point = None
+            
+            # 清除其他可能的標記
+            if hasattr(self, 'track_highlight_point') and self.track_highlight_point:
+                self.track_highlight_point.remove()
+                self.track_highlight_point = None
+            
+            # 清除所有範圍高亮
+            range_ids = list(self.range_highlights.keys())  # 創建鍵的列表以避免在迭代時修改字典
+            for range_id in range_ids:
+                self.remove_range_highlight(range_id)
+            
+            # 更新圖表
+            self.figure.canvas.draw_idle()
+            
+        except Exception as e:
+            print(f"清除所有標記時出錯: {str(e)}")
 
     def highlight_range(self, start_index, end_index, range_id):
         """在主圖表上高亮顯示指定範圍"""
         try:
             # 為每個子圖添加範圍標示
             highlights = []
+            text_labels = []  # 新增：存儲文字標籤
             colors = ['#FFD700', '#98FB98', '#87CEFA', '#DDA0DD', '#F08080']  # 不同範圍使用不同顏色
             color = colors[range_id % len(colors)]  # 循環使用顏色
             
@@ -1171,14 +1184,37 @@ class PlotManager:
             axes = self.figure.get_axes()
             
             for ax in axes:
+                # 添加高亮區域
                 highlight = ax.axvspan(start_index, end_index, 
                                      alpha=0.2, 
                                      color=color,
                                      zorder=1)  # 確保高亮在數據線後面
                 highlights.append(highlight)
+                
+                # 添加範圍標籤
+                # 計算文字位置（在範圍的中間位置）
+                x_pos = start_index + (end_index - start_index) / 2
+                y_pos = 0.95  # 在軸的頂部位置
+                
+                # 添加文字標籤
+                text = ax.text(x_pos, y_pos, 
+                             f'範圍 {range_id}',
+                             horizontalalignment='center',
+                             verticalalignment='top',
+                             transform=ax.get_xaxis_transform(),  # 使用x軸變換
+                             bbox=dict(facecolor='white',
+                                     edgecolor=color,
+                                     alpha=0.8,
+                                     boxstyle='round,pad=0.5'),
+                             fontsize=9,
+                             zorder=5)  # 確保文字在最上層
+                text_labels.append(text)
             
-            # 存儲高亮對象以便後續移除
-            self.range_highlights[range_id] = highlights
+            # 存儲高亮對象和文字標籤以便後續移除
+            self.range_highlights[range_id] = {
+                'highlights': highlights,
+                'labels': text_labels
+            }
             
         except Exception as e:
             print(f"添加範圍高亮時出錯: {str(e)}")
@@ -1188,8 +1224,11 @@ class PlotManager:
         try:
             if range_id in self.range_highlights:
                 # 移除所有子圖中的高亮
-                for highlight in self.range_highlights[range_id]:
+                for highlight in self.range_highlights[range_id]['highlights']:
                     highlight.remove()
+                # 移除所有文字標籤
+                for label in self.range_highlights[range_id]['labels']:
+                    label.remove()
                 del self.range_highlights[range_id]
                 
         except Exception as e:
