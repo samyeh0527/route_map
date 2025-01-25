@@ -484,12 +484,15 @@ class MapViewer(QMainWindow):
             if hasattr(self, 'track_point') and self.track_point:
                 self.track_point.remove()
                 self.track_point = None
-                self.track_canvas.draw()
+            
+            # 清除起點標記
+            self.plot_manager.clear_start_point()
             
             # 更新圖表
             self.plot_manager.data_list = [self.full_data]  # 使用完整數據
             self.plot_manager.create_plots()
             self.canvas.draw()  # 確保重新繪製圖表
+            self.track_canvas.draw()  # 確保重新繪製軌跡圖
             
             print("圖表更新完成")
             
@@ -699,6 +702,10 @@ class MapViewer(QMainWindow):
             
             if reply == QMessageBox.No:
                 return
+        
+            # 清除軌跡圖上的起點標記
+            self.plot_manager.clear_start_point()
+            self.track_canvas.draw()  # 立即更新軌跡圖顯示
         
         # UI 狀態管理
         self.is_setting_start_point = True

@@ -53,6 +53,9 @@ class PlotManager:
                 print("錯誤: 沒有數據")
                 return
             
+            # 清除起點設定
+            self.clear_start_point()
+            
             # 暫存起點資訊
             temp_start_point_data = self.start_point_data if self.has_start_point_set else None
             
