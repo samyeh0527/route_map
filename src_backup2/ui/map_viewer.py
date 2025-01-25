@@ -2,7 +2,7 @@
 
 from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QPushButton, QFileDialog,
-    QHBoxLayout, QLabel, QSpinBox, QMessageBox, QApplication, QListWidget, QListWidgetItem
+    QHBoxLayout, QLabel, QSpinBox, QMessageBox, QApplication, QListWidget, QListWidgetItem, QToolBar
 )
 from PyQt5.QtCore import Qt, QTimer
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
@@ -154,6 +154,12 @@ class MapViewer(QMainWindow):
         self.track_ax = self.track_figure.add_subplot(111)
         self.track_canvas = FigureCanvas(self.track_figure)
         
+        # 保存初始視圖狀態
+        self.track_ax.set_title(" ", fontsize=8)
+        self.track_ax.grid(True)
+        self.track_ax.set_aspect('equal')
+        self.track_home_limits = None  # 添加這行來存儲初始視圖範圍
+        
         # 創建圖表管理器並設置回調
         self.plot_manager = PlotManager(self.figure)
         self.plot_manager.set_click_callback(self._on_plot_clicked)
@@ -196,49 +202,45 @@ class MapViewer(QMainWindow):
         track_plot_layout.setContentsMargins(15, 15, 15, 15)
         track_plot_layout.setSpacing(8)
         
-        # # 添加標題標籤
-        # title_label = QLabel("位置軌跡圖")
-        # title_label.setStyleSheet("""
-        #     QLabel {
-        #         color: #495057;
-        #         font-weight: bold;
-        #         font-size: 14px;
-        #         padding: 0 0 8px 0;
-        #     }
-        # """)
-        # track_plot_layout.addWidget(title_label)
-        
         # 創建水平布局來放置導航工具欄和軌跡圖
         track_content_layout = QHBoxLayout()
         
-        # 創建左側導航工具欄（縮放和平移）
-        self.track_toolbar = NavigationToolbar(self.track_canvas, track_plot_container, coordinates=False)
+        # 創建導航工具欄（縮放和平移）
+        self.track_toolbar = NavigationToolbar(self.track_canvas, self, coordinates=False)
         self.track_toolbar.setOrientation(Qt.Vertical)
         self.track_toolbar.setStyleSheet("QToolBar { border: none; }")
-        
-        # 只保留縮放和平移工具
-        left_tools = []
-        for action in self.track_toolbar.actions():
-            if any(name in str(action.text()).lower() for name in ['pan', 'zoom', 'back', 'forward']):
-                left_tools.append(action)
-            else:
-                self.track_toolbar.removeAction(action)
-        
-        # 創建右側導航工具欄（保存和配置）
-        right_toolbar = NavigationToolbar(self.track_canvas, track_plot_container, coordinates=False)
+        self.track_toolbar.hide()  # 隱藏原始工具欄
+
+        # 創建兩個垂直工具欄容器
+        left_toolbar = QToolBar()
+        right_toolbar = QToolBar()
+        left_toolbar.setOrientation(Qt.Vertical)
         right_toolbar.setOrientation(Qt.Vertical)
+        left_toolbar.setStyleSheet("QToolBar { border: none; }")
         right_toolbar.setStyleSheet("QToolBar { border: none; }")
-        
-        # 只保留保存和配置工具
-        right_tools = []
-        for action in right_toolbar.actions():
-            if any(name in str(action.text()).lower() for name in ['save', 'subplots', 'customize','home']):
-                right_tools.append(action)
-            else:
-                right_toolbar.removeAction(action)
-        
-        # 添加到水平布局
-        track_content_layout.addWidget(self.track_toolbar)
+
+        # 定義左右兩側的按鈕
+        left_actions = ['Zoom', 'Back', 'Forward']
+        right_actions = ['Home', 'Pan']
+
+        # 將按鈕分配到左右工具欄，並移除原始工具欄中的按鈕
+        for action in self.track_toolbar.actions():
+            if action.text() in left_actions + right_actions:
+                if action.text() in left_actions:
+                    left_toolbar.addAction(action)
+                else:
+                    right_toolbar.addAction(action)
+            
+            # 從原始工具欄中移除所有按鈕
+            self.track_toolbar.removeAction(action)
+
+            # 特別處理 Home 按鈕的事件
+            if action.text() == 'Home':
+                action.triggered.disconnect()
+                action.triggered.connect(self._track_home)
+
+        # 修改 track_content_layout 的內容
+        track_content_layout.addWidget(left_toolbar)
         track_content_layout.addWidget(self.track_canvas)
         track_content_layout.addWidget(right_toolbar)
         
@@ -679,12 +681,30 @@ class MapViewer(QMainWindow):
             y_min, y_max = y_data.min(), y_data.max()
             margin_x = (x_max - x_min) * 0.1
             margin_y = (y_max - y_min) * 0.1
+            
+            # 設置軸範圍
             self.track_ax.set_xlim(x_min - margin_x, x_max + margin_x)
             self.track_ax.set_ylim(y_min - margin_y, y_max + margin_y)
             
-            # 重置導航工具欄的歷史
-            self.track_toolbar.update()
+            # 保存初始視圖狀態
+            self.track_home_limits = {
+                'xlim': self.track_ax.get_xlim(),
+                'ylim': self.track_ax.get_ylim(),
+                'aspect': self.track_ax.get_aspect()
+            }
+            
+            # 更新工具欄並重新綁定 home 按鈕事件
+            for action in self.track_toolbar.actions():
+                if action.text() == 'Home':
+                    try:
+                        action.triggered.disconnect()
+                    except TypeError:
+                        pass  # 如果沒有連接的信號，忽略錯誤
+                    action.triggered.connect(self._track_home)
+            
             self.track_canvas.draw()
+            
+            print("已設置初始視圖範圍：", self.track_home_limits)
             
             # 在載入數據後更新時間顯示
             self._calculate_time_difference()
@@ -884,3 +904,18 @@ class MapViewer(QMainWindow):
         except Exception as e:
             print(f"更新數據列表時出錯: {str(e)}")
             QMessageBox.critical(self, "錯誤", f"更新數據列表時出錯：{str(e)}")
+
+    def _track_home(self):
+        """回到軌跡圖的初始視圖"""
+        try:
+            if self.track_home_limits:
+                print("正在重置視圖到初始狀態...")
+                self.track_ax.set_xlim(self.track_home_limits['xlim'])
+                self.track_ax.set_ylim(self.track_home_limits['ylim'])
+                self.track_ax.set_aspect(self.track_home_limits['aspect'])
+                self.track_canvas.draw()
+                print("視圖重置完成")
+            else:
+                print("沒有保存的初始視圖範圍")
+        except Exception as e:
+            print(f"重置視圖時出錯: {str(e)}")
