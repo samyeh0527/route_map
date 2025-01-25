@@ -154,10 +154,13 @@ class MapViewer(QMainWindow):
         self.track_ax = self.track_figure.add_subplot(111)
         self.track_canvas = FigureCanvas(self.track_figure)
         
+        # 新增：啟用緊湊布局
+        self.track_figure.tight_layout()
+        
         # 保存初始視圖狀態
         self.track_ax.set_title(" ", fontsize=8)
         self.track_ax.grid(True)
-        self.track_ax.set_aspect('equal')
+        self.track_ax.set_aspect('equal', adjustable='datalim')  # 修改：使用 adjustable='datalim'
         self.track_home_limits = None  # 添加這行來存儲初始視圖範圍
         
         # 創建圖表管理器並設置回調
@@ -250,7 +253,7 @@ class MapViewer(QMainWindow):
         # 設置軌跡圖的基本屬性
         self.track_ax.set_title(" ", fontsize=8)
         self.track_ax.grid(True)
-        self.track_ax.set_aspect('equal')
+        self.track_ax.set_aspect('equal', adjustable='datalim')  #
         
         # 修改：使用正確的事件連接方式
         self.track_canvas.mpl_connect('button_press_event', self._on_track_click)
@@ -672,7 +675,7 @@ class MapViewer(QMainWindow):
             
             self.track_ax.set_title("位置軌跡圖", fontsize=12)
             self.track_ax.grid(True)
-            self.track_ax.set_aspect('equal')
+            self.track_ax.set_aspect('equal', adjustable='datalim')  # 修改：使用 adjustable='datalim'
             
             # 設置適當的邊距
             x_data = self.full_data['X' if 'X' in self.full_data.columns else 'Longitude']
@@ -708,6 +711,9 @@ class MapViewer(QMainWindow):
             
             # 在載入數據後更新時間顯示
             self._calculate_time_difference()
+            
+            # 新增：更新布局
+            self.track_figure.tight_layout()
             
             print("=== CSV 文件載入完成 ===\n")
             
