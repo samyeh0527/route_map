@@ -113,16 +113,20 @@ class MapViewer(QMainWindow):
         self.figure = Figure(figsize=(10, 6))
         self.axes = self.figure.subplots(3, 1)  # 只創建三個垂直排列的子圖
         
+        # 初始化時不設置標題,等待數據載入後再設置
+        for ax in self.axes:
+            ax.set_title("")
+        
         # 設置字體
         rcParams['font.family'] = ['Microsoft JhengHei', 'Noto Sans TC', 'DFKai-SB', 'sans-serif']  # 使用繁體中文字體
         rcParams['axes.unicode_minus'] = False
         rcParams['axes.titley'] = 1.0
         rcParams['axes.titlepad'] = -14
         
-        # 設置子圖標題
-        titles = ['G Speed', 'R scale 1', 'R scale 2']
-        for ax, title in zip(self.axes, titles):
-            ax.set_title(title, fontsize=18)
+        # # 設置子圖標題在左側
+        # titles = ['G Speed', 'R scale 1', 'R scale 2']
+        # for ax, title in zip(self.axes, titles):
+        #     ax.set_title(title, fontsize=18, loc='left', pad=10)
         
         self.canvas = FigureCanvas(self.figure)
         plot_layout.addWidget(self.canvas)
@@ -596,30 +600,8 @@ class MapViewer(QMainWindow):
     def _on_plot_clicked(self, index):
         """處理主圖表點擊回調"""
         try:
-            # 清除舊的標記點
-            if hasattr(self, 'track_point') and self.track_point:
-                self.track_point.remove()
-                self.track_point = None
-
-            # 獲取對應的位置數據
-            if 'X' in self.full_data.columns and 'Y' in self.full_data.columns:
-                x = self.full_data['X'].iloc[index]
-                y = self.full_data['Y'].iloc[index]
-            elif 'Longitude' in self.full_data.columns and 'Latitude' in self.full_data.columns:
-                x = self.full_data['Longitude'].iloc[index]
-                y = self.full_data['Latitude'].iloc[index]
-            else:
-                return
-
-            # 在軌跡圖上添加紅點標記
-            self.track_point = self.track_ax.scatter(
-                x, y,
-                color='red',
-                s=100,
-                zorder=5
-            )
-            self.track_canvas.draw()
-
+            # 清除舊的標記點並更新軌跡圖
+            self.plot_manager.update_track_point(index, self.track_ax, self.track_canvas)
         except Exception as e:
             print(f"處理主圖表點擊回調時出錯: {str(e)}")
             import traceback
@@ -688,56 +670,19 @@ class MapViewer(QMainWindow):
             return
         
         try:
-            # 找到最近的數據點
-            if 'X' in self.full_data.columns and 'Y' in self.full_data.columns:
-                distances = ((self.full_data['X'] - event.xdata) ** 2 + 
-                           (self.full_data['Y'] - event.ydata) ** 2) ** 0.5
-                x_col, y_col = 'X', 'Y'
-            elif 'Longitude' in self.full_data.columns and 'Latitude' in self.full_data.columns:
-                distances = ((self.full_data['Longitude'] - event.xdata) ** 2 + 
-                           (self.full_data['Latitude'] - event.ydata) ** 2) ** 0.5
-                x_col, y_col = 'Longitude', 'Latitude'
-            else:
+            nearest_idx = self.plot_manager.find_nearest_point(event.xdata, event.ydata)
+            if nearest_idx is None:
                 return
             
-            nearest_idx = distances.argmin()
-            
-            # 檢查是否在設定起點模式
             if self.is_setting_start_point:
-                # 在軌跡圖上標記選擇的點
-                if hasattr(self, 'track_point') and self.track_point:
-                    self.track_point.remove()
-                self.track_point = self.track_ax.scatter(
-                    self.full_data[x_col].iloc[nearest_idx],
-                    self.full_data[y_col].iloc[nearest_idx],
-                    color='red',
-                    s=100,
-                    zorder=5
-                )
-                self.track_canvas.draw()
-                
-                # 設定起點並更新UI
-                self.plot_manager.set_start_point(nearest_idx)
+                # 設定起點
+                self.plot_manager.set_start_point(nearest_idx, self.track_ax, self.track_canvas)
                 self.is_setting_start_point = False
                 self.set_start_button.setText("設定起點")
-                
                 print(f"已在軌跡圖上設定起點，索引: {nearest_idx}")
-                
             else:
                 # 更新軌跡圖上的點
-                if hasattr(self, 'track_point') and self.track_point:
-                    self.track_point.remove()
-                self.track_point = self.track_ax.scatter(
-                    self.full_data[x_col].iloc[nearest_idx],
-                    self.full_data[y_col].iloc[nearest_idx],
-                    color='red',
-                    s=100,
-                    zorder=5
-                )
-                self.track_canvas.draw()
-                
-                # 觸發 plot_manager 的回調來更新主圖表
-                self.plot_manager.highlight_point(nearest_idx)
+                self.plot_manager.update_track_point(nearest_idx, self.track_ax, self.track_canvas)
                 print(f"已更新顯示位置，索引: {nearest_idx}")
 
         except Exception as e:

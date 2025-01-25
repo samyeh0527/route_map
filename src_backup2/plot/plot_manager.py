@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import warnings
 import matplotlib as mpl
-
+#只處理主圖表 Gspeed , Rscale1 , Rscale2 , 
 class PlotManager:
     """圖表管理器"""
     def __init__(self, figure):
@@ -42,6 +42,7 @@ class PlotManager:
         self.info_text = None
         self.crosshair_lines = []  # 儲存十字虛線
         self.value_texts = []  # 儲存所有數值文字對象
+        self.track_point = None
 
     def create_plots(self, highlight_index=None, highlight_range=None):
         """創建圖表，支持高亮顯示"""
@@ -138,9 +139,14 @@ class PlotManager:
     def _plot_data(self, ax, column_name, title):
         """繪製數據到指定的軸"""
         try:
+            # 如果沒有數據,清除標題
+            if not self.data_list:
+                ax.set_title("")
+                return
+                
             for i, data in enumerate(self.data_list):
                 if column_name in data.columns:
-                    # 使用固定的列名作為標題，而不是從參數獲取
+                    # 使用固定的列名作為標題
                     if column_name == 'G Speed':
                         plot_title = 'G Speed'
                     elif column_name == 'R Scale 1':
@@ -150,7 +156,20 @@ class PlotManager:
                     else:
                         plot_title = column_name
                     
-                    ax.set_title(plot_title, fontsize=10, fontfamily='sans-serif')
+                    # 設置黑底白字的標題
+                    ax.set_title(plot_title, 
+                               fontsize=10, 
+                               fontfamily='sans-serif',
+                               loc='left',
+                               pad=10,
+                               bbox=dict(
+                                   facecolor='black',
+                                   edgecolor='none',
+                                   pad=3.0,
+                                   alpha=1.0
+                               ),
+                               color='white')
+                    
                     ax.plot(data.index, data[column_name], 
                            color=self.colors[i % len(self.colors)],
                            label=f'數據集 {i+1}')
@@ -936,3 +955,50 @@ class PlotManager:
             print(f"高亮顯示數據點時出錯: {str(e)}")
             import traceback
             traceback.print_exc()
+
+    def find_nearest_point(self, x, y):
+        """找到最近的數據點"""
+        if not self.data_list:
+            return None
+            
+        data = self.data_list[0]
+        if 'X' in data.columns and 'Y' in data.columns:
+            distances = ((data['X'] - x) ** 2 + (data['Y'] - y) ** 2) ** 0.5
+            x_col, y_col = 'X', 'Y'
+        elif 'Longitude' in data.columns and 'Latitude' in data.columns:
+            distances = ((data['Longitude'] - x) ** 2 + (data['Latitude'] - y) ** 2) ** 0.5
+            x_col, y_col = 'Longitude', 'Latitude'
+        else:
+            return None
+            
+        return distances.argmin()
+        
+    def update_track_point(self, index, track_ax, track_canvas):
+        """更新軌跡圖上的點"""
+        if not self.data_list:
+            return
+            
+        data = self.data_list[0]
+        if self.track_point:
+            self.track_point.remove()
+            
+        x_col = 'X' if 'X' in data.columns else 'Longitude'
+        y_col = 'Y' if 'Y' in data.columns else 'Latitude'
+        
+        self.track_point = track_ax.scatter(
+            data[x_col].iloc[index],
+            data[y_col].iloc[index],
+            color='red',
+            s=100,
+            zorder=5
+        )
+        track_canvas.draw()
+        
+        # 更新主圖表高亮
+        self.highlight_point(index)
+        
+    def set_start_point(self, index, track_ax, track_canvas):
+        """設定起點"""
+        self.start_point = index
+        self.update_track_point(index, track_ax, track_canvas)
+        self.create_plots()  # 重新繪製主圖表
