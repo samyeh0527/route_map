@@ -55,6 +55,29 @@ class MapViewer(QMainWindow):
         
         print("初始化完成：按鈕信號已連接")
 
+        # 創建圖表管理器並設置回調
+        self.plot_manager = PlotManager(self.figure)
+        self.plot_manager.set_click_callback(self._on_plot_clicked)
+        self.plot_manager.set_range_update_callback(self.update_range_list)
+
+        # 設置 check_list 的選取模式
+        self.check_list.setSelectionMode(QListWidget.NoSelection)  # 禁用選取反白
+        self.check_list.setFocusPolicy(Qt.NoFocus)  # 禁用焦點顯示
+        
+        # 設置樣式表，移除選取時的背景色
+        self.check_list.setStyleSheet("""
+            QListWidget::item {
+                background: transparent;
+            }
+            QListWidget::item:selected {
+                background: transparent;
+                color: black;
+            }
+            QListWidget::item:hover {
+                background: transparent;
+            }
+        """)
+
     def _init_ui(self):
         """初始化UI"""
         # 創建中央部件和主布局
@@ -741,16 +764,15 @@ class MapViewer(QMainWindow):
             import traceback
             traceback.print_exc()
 
-    def update_range_list(self):
+    def update_range_list(self, ranges):
         """更新範圍列表"""
         self.check_list.clear()
-        for group in self.range_groups:
-            # 獲取時間戳記
-            time_text = group['time_label'].text()
-            # 創建列表項
-            item = QListWidgetItem(f"範圍 {group['id'] + 1} - {time_text}")
+        for range_info in ranges:
+            # 創建列表項，格式：範圍1, 時間 00:00:00
+            item_text = f"範圍{range_info['range_number']}, 時間 {range_info['duration_str']}"
+            item = QListWidgetItem(item_text)
             item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
-            item.setCheckState(Qt.Checked)  # 默認選中
+            item.setCheckState(Qt.Checked)
             self.check_list.addItem(item)
 
     def update_map(self):

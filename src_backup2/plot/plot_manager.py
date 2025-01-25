@@ -4,6 +4,8 @@ import matplotlib.pyplot as plt
 import warnings
 import matplotlib as mpl
 import pandas as pd
+from PyQt5.QtWidgets import QApplication, QProgressDialog
+from PyQt5.QtCore import Qt
 
 class PlotManager:
     """圖表管理器"""
@@ -44,6 +46,7 @@ class PlotManager:
         self.crosshair_lines = []  # 儲存十字虛線
         self.value_texts = []  # 儲存所有數值文字對象
         self.track_point = None
+        self.range_update_callback = None  # 添加新的回調屬性
 
     def create_plots(self, highlight_index=None, highlight_range=None):
         """創建圖表，支持高亮顯示"""
@@ -1028,73 +1031,111 @@ class PlotManager:
         # 更新主圖表高亮
         self.highlight_point(index)
         
+    def set_range_update_callback(self, callback):
+        """設置範圍更新回調函數"""
+        self.range_update_callback = callback
+
     def analyze_ranges(self, start_index):
         """分析數據範圍"""
         try:
-            data = self.data_list[0]  # 假設使用第一個數據集
+            # 創建進度對話框
+            progress = QProgressDialog("分析數據範圍中...", None, 0, 0)
+            progress.setWindowModality(Qt.WindowModal)  # 鎖住主窗口
+            progress.setWindowTitle("請稍候")
+            progress.setCancelButton(None)  # 移除取消按鈕
+            progress.setMinimumDuration(0)  # 立即顯示
+            progress.setWindowFlags(
+                progress.windowFlags() & ~Qt.WindowCloseButtonHint  # 移除關閉按鈕
+            )
+            progress.show()
             
-            # 確保 Time 列是 datetime 格式
+            # 強制處理事件，確保進度對話框顯示
+            QApplication.processEvents()
+            
+            data = self.data_list[0]  # 假設使用第一個數據集
             data['Time'] = pd.to_datetime(data['Time'])
             
-            # 獲取起點的經緯度
             x_col = 'X' if 'X' in data.columns else 'Longitude'
             y_col = 'Y' if 'Y' in data.columns else 'Latitude'
             start_x = data[x_col].iloc[start_index]
             start_y = data[y_col].iloc[start_index]
-            start_time = data['Time'].iloc[start_index]
             
-            # 設定容許的經緯度誤差範圍（可以根據需要調整）
-            tolerance = 0.0001  # 約等於10米的誤差
+            # 調整容許誤差範圍
+            tolerance = 0.00015  # 增加誤差範圍
             
             ranges = []
             current_range = 1
             last_match_index = start_index
+            in_range = False  # 新增：追蹤是否正在一個範圍內
             
             # 從起點後開始搜尋
             for i in range(start_index + 1, len(data)):
+                if i % 100 == 0:
+                    progress.setLabelText(f"分析數據範圍中...\n已處理: {i}/{len(data)} 筆數據")
+                    QApplication.processEvents()
+                
                 current_x = data[x_col].iloc[i]
                 current_y = data[y_col].iloc[i]
                 current_time = data['Time'].iloc[i]
                 
-                # 檢查是否回到起點位置（考慮誤差範圍）
+                # 檢查是否回到起點位置
                 x_match = abs(current_x - start_x) <= tolerance
                 y_match = abs(current_y - start_y) <= tolerance
                 
                 if x_match and y_match:
-                    # 計算與上一次匹配點的時間差（秒）
-                    time_diff = (current_time - data['Time'].iloc[last_match_index]).total_seconds()
-                    
-                    # 如果時間差大於5秒
-                    if time_diff >= 5:
-                        print(f"找到範圍 {current_range}:")
-                        print(f"起點: 索引 {last_match_index}, 時間 {data['Time'].iloc[last_match_index]}")
-                        print(f"終點: 索引 {i}, 時間 {current_time}")
-                        # 自動換算時間單位
-                        if time_diff >= 3600:
-                            print(f"時間差: {time_diff/3600:.2f} 小時")
-                        elif time_diff >= 60:
-                            print(f"時間差: {time_diff/60:.2f} 分鐘")
-                        else:
-                            print(f"時間差: {time_diff:.2f} 秒")
-                        print("---")
+                    # 如果已經離開過起點區域，且現在又回到起點
+                    if not in_range:
+                        time_diff = (current_time - data['Time'].iloc[last_match_index]).total_seconds()
                         
-                        # 添加範圍資訊
-                        ranges.append({
-                            'range_number': current_range,
-                            'start_index': last_match_index,
-                            'end_index': i,
-                            'start_time': data['Time'].iloc[last_match_index],
-                            'end_time': current_time,
-                            'duration': time_diff
-                        })
-                        
-                        # 更新為下一個範圍的起點
-                        last_match_index = i
-                        current_range += 1
+                        # 如果時間差大於5秒，則視為有效範圍
+                        if time_diff >= 5:
+                            # 輸出詳細的除錯信息
+                            print(f"\n找到範圍 {current_range}:")
+                            print(f"起點: 索引 {last_match_index}")
+                            print(f"  座標: ({data[x_col].iloc[last_match_index]}, {data[y_col].iloc[last_match_index]})")
+                            print(f"  時間: {data['Time'].iloc[last_match_index]}")
+                            print(f"終點: 索引 {i}")
+                            print(f"  座標: ({current_x}, {current_y})")
+                            print(f"  時間: {current_time}")
+                            
+                            # 格式化時間差
+                            hours = int(time_diff // 3600)
+                            minutes = int((time_diff % 3600) // 60)
+                            seconds = int(time_diff % 60)
+                            time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+                            print(f"時間差: {time_str}")
+                            print("---")
+                            
+                            ranges.append({
+                                'range_number': current_range,
+                                'start_index': last_match_index,
+                                'end_index': i,
+                                'start_time': data['Time'].iloc[last_match_index],
+                                'end_time': current_time,
+                                'duration': time_diff,
+                                'duration_str': time_str
+                            })
+                            
+                            current_range += 1
+                            last_match_index = i
+                            in_range = True
+                else:
+                    # 當離開起點區域時
+                    if in_range:
+                        in_range = False
+            
+            # 關閉進度對話框
+            progress.close()
+            
+            # 如果有回調函數，調用它來更新 check_list
+            if self.range_update_callback:
+                self.range_update_callback(ranges)
             
             return ranges
             
         except Exception as e:
+            if 'progress' in locals():
+                progress.close()
             print(f"分析範圍時出錯: {str(e)}")
             import traceback
             traceback.print_exc()
