@@ -271,9 +271,9 @@ class MapViewer(QMainWindow):
     def on_item_changed(self, item):
         
         if item.checkState() == Qt.Checked:
-            print(f"選項'{item.text()}' 選取")
+            print(f"選項'{item.text()} \n {item.data(Qt.UserRole)}' 選取")
         else:
-            print(f"選項 '{item.text()}' 取消")
+            print(f"選項 '{item.text()} \n {item.data(Qt.UserRole)}' 取消")
 
 
     def _setup_control_panel(self):
@@ -786,6 +786,7 @@ class MapViewer(QMainWindow):
             # 創建列表項，格式：範圍1, 時間 00:00:00
             item_text = f"範圍{range_info['range_number']}, 時間 {range_info['duration_str']}"
             item = QListWidgetItem(item_text)
+            item.setData(Qt.UserRole, {"id": range_info['range_number'], "description": f"start_index:{range_info['start_index']},end_index:{range_info['end_index']}"})
             item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
             item.setCheckState(Qt.Unchecked)
             self.check_list.addItem(item)
