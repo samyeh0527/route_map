@@ -3,7 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import warnings
 import matplotlib as mpl
-#只處理主圖表 Gspeed , Rscale1 , Rscale2 , 
+import pandas as pd
+
 class PlotManager:
     """圖表管理器"""
     def __init__(self, figure):
@@ -752,35 +753,62 @@ class PlotManager:
         self.is_setting_start_point = True
         print("請在位置軌跡圖上選擇起點")
 
-    def _set_start_point(self, x, y):
-        """設定起點並繪製垂直標記線"""
+    def set_start_point(self, index, track_ax, track_canvas):
+        """設定起點"""
         try:
-            # 清除舊的起點線（如果存在）
+            # 確保 index 是整數類型
+            index = int(index)
+            
+            # 儲存起點資訊
+            self.start_point = index
+            self.has_start_point_set = True
+            self.start_point_data = {'x': index}  # 確保存儲的也是整數
+            
+            # 獲取選中點的座標，處理不同的列名情況
+            data = self.data_list[0]  # 假設使用第一個數據集
+            x_col = 'X' if 'X' in data.columns else 'Longitude'
+            y_col = 'Y' if 'Y' in data.columns else 'Latitude'
+            
+            x = data[x_col].iloc[index]
+            y = data[y_col].iloc[index]
+            
+            # 更新軌跡圖上的點
+            self.update_track_point(index, track_ax, track_canvas)
+            
+            # 清除舊的標記線
             if hasattr(self, 'start_point_line') and self.start_point_line:
                 for line in self.start_point_line:
                     line.remove()
-                self.start_point_line = None
-
-            # 儲存起點座標和相關資訊
-            self.start_point = (x, y)
-            self.has_start_point_set = True
             
-            # 更新起點資訊
-            self.start_point_data = {
-                'x': x,
-                'y': y
-            }
-
-            # 在所有子圖上添加垂直線
             self.start_point_line = []
+            
+            # 為主圖表添加垂直線並更新顯示
             for ax_name, ax in self.axes.items():
-                line = ax.axvline(x=x, color='green', linestyle='--', linewidth=2)
+                line = ax.axvline(x=index, color='green', linestyle='--', linewidth=2)
                 self.start_point_line.append(line)
-
-            # 更新圖表
-            self.figure.canvas.draw_idle()
-            print(f"起點已設定在: x={x:.6f}, y={y:.6f}")
-
+                ax.figure.canvas.draw()  # 更新每個主圖表
+            
+            # 計算1公分的數據單位長度
+            y_range = track_ax.get_ylim()[1] - track_ax.get_ylim()[0]
+            fig_height_inches = track_ax.figure.get_size_inches()[1]
+            one_cm_data_units = (y_range / (fig_height_inches * 2.54))  # 轉換1公分到數據單位
+            
+            # 在軌跡圖上添加垂直線（向上下各延伸1公分）
+            track_line = track_ax.plot([x, x], 
+                                     [y - one_cm_data_units, y + one_cm_data_units],  # 從選取點向上下各延伸1公分
+                                     color='green',
+                                     linestyle='--',
+                                     linewidth=2)[0]
+            self.start_point_line.append(track_line)
+            
+            # 更新軌跡圖顯示
+            track_canvas.draw()
+            
+            # 呼叫 analyze_ranges 進行分析
+            self.analyze_ranges(index)
+            
+            print(f"起點已設定在索引: {index}")
+            
         except Exception as e:
             print(f"設定起點時出錯: {str(e)}")
             import traceback
@@ -997,8 +1025,74 @@ class PlotManager:
         # 更新主圖表高亮
         self.highlight_point(index)
         
-    def set_start_point(self, index, track_ax, track_canvas):
-        """設定起點"""
-        self.start_point = index
-        self.update_track_point(index, track_ax, track_canvas)
-        self.create_plots()  # 重新繪製主圖表
+    def analyze_ranges(self, start_index):
+        """分析數據範圍"""
+        try:
+            data = self.data_list[0]  # 假設使用第一個數據集
+            
+            # 確保 Time 列是 datetime 格式
+            data['Time'] = pd.to_datetime(data['Time'])
+            
+            # 獲取起點的經緯度
+            x_col = 'X' if 'X' in data.columns else 'Longitude'
+            y_col = 'Y' if 'Y' in data.columns else 'Latitude'
+            start_x = data[x_col].iloc[start_index]
+            start_y = data[y_col].iloc[start_index]
+            start_time = data['Time'].iloc[start_index]
+            
+            # 設定容許的經緯度誤差範圍（可以根據需要調整）
+            tolerance = 0.0001  # 約等於10米的誤差
+            
+            ranges = []
+            current_range = 1
+            last_match_index = start_index
+            
+            # 從起點後開始搜尋
+            for i in range(start_index + 1, len(data)):
+                current_x = data[x_col].iloc[i]
+                current_y = data[y_col].iloc[i]
+                current_time = data['Time'].iloc[i]
+                
+                # 檢查是否回到起點位置（考慮誤差範圍）
+                x_match = abs(current_x - start_x) <= tolerance
+                y_match = abs(current_y - start_y) <= tolerance
+                
+                if x_match and y_match:
+                    # 計算與上一次匹配點的時間差（秒）
+                    time_diff = (current_time - data['Time'].iloc[last_match_index]).total_seconds()
+                    
+                    # 如果時間差大於5秒
+                    if time_diff >= 5:
+                        print(f"找到範圍 {current_range}:")
+                        print(f"起點: 索引 {last_match_index}, 時間 {data['Time'].iloc[last_match_index]}")
+                        print(f"終點: 索引 {i}, 時間 {current_time}")
+                        # 自動換算時間單位
+                        if time_diff >= 3600:
+                            print(f"時間差: {time_diff/3600:.2f} 小時")
+                        elif time_diff >= 60:
+                            print(f"時間差: {time_diff/60:.2f} 分鐘")
+                        else:
+                            print(f"時間差: {time_diff:.2f} 秒")
+                        print("---")
+                        
+                        # 添加範圍資訊
+                        ranges.append({
+                            'range_number': current_range,
+                            'start_index': last_match_index,
+                            'end_index': i,
+                            'start_time': data['Time'].iloc[last_match_index],
+                            'end_time': current_time,
+                            'duration': time_diff
+                        })
+                        
+                        # 更新為下一個範圍的起點
+                        last_match_index = i
+                        current_range += 1
+            
+            return ranges
+            
+        except Exception as e:
+            print(f"分析範圍時出錯: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return []

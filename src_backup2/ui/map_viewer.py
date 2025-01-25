@@ -688,7 +688,7 @@ class MapViewer(QMainWindow):
     def start_setting_start_point(self):
         """開始設定起點模式"""
         if self.plot_manager.has_start_point():
-            # 顯示警告對話框
+            # UI 相關邏輯保留在 MapViewer
             reply = QMessageBox.warning(
                 self,
                 "警告",
@@ -700,8 +700,10 @@ class MapViewer(QMainWindow):
             if reply == QMessageBox.No:
                 return
         
+        # UI 狀態管理
         self.is_setting_start_point = True
         self.set_start_button.setText("請在位置軌跡圖上選擇起點")
+        # 委託 PlotManager 處理數據相關操作
         self.plot_manager.enable_start_point_selection()
 
     def _on_track_click(self, event):
@@ -710,18 +712,20 @@ class MapViewer(QMainWindow):
             return
         
         try:
+            # 委託 PlotManager 處理數據相關操作
             nearest_idx = self.plot_manager.find_nearest_point(event.xdata, event.ydata)
             if nearest_idx is None:
                 return
             
             if self.is_setting_start_point:
-                # 設定起點
+                # 委託 PlotManager 處理數據相關操作
                 self.plot_manager.set_start_point(nearest_idx, self.track_ax, self.track_canvas)
+                # UI 狀態管理保留在 MapViewer
                 self.is_setting_start_point = False
                 self.set_start_button.setText("設定起點")
                 print(f"已在軌跡圖上設定起點，索引: {nearest_idx}")
             else:
-                # 更新軌跡圖上的點
+                # 委託 PlotManager 處理數據相關操作
                 self.plot_manager.update_track_point(nearest_idx, self.track_ax, self.track_canvas)
                 print(f"已更新顯示位置，索引: {nearest_idx}")
 
