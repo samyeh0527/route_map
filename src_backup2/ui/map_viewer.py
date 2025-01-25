@@ -118,18 +118,18 @@ class MapViewer(QMainWindow):
             ax.set_title("")
         
         # 設置字體
-        rcParams['font.family'] = ['Microsoft JhengHei', 'Noto Sans TC', 'DFKai-SB', 'sans-serif']  # 使用繁體中文字體
+        rcParams['font.family'] = ['Microsoft JhengHei', 'Noto Sans TC', 'DFKai-SB', 'sans-serif']
         rcParams['axes.unicode_minus'] = False
         rcParams['axes.titley'] = 1.0
         rcParams['axes.titlepad'] = -14
         
-        # # 設置子圖標題在左側
-        # titles = ['G Speed', 'R scale 1', 'R scale 2']
-        # for ax, title in zip(self.axes, titles):
-        #     ax.set_title(title, fontsize=18, loc='left', pad=10)
-        
         self.canvas = FigureCanvas(self.figure)
         plot_layout.addWidget(self.canvas)
+        
+        # 創建軌跡圖
+        self.track_figure = Figure(figsize=(8, 4))
+        self.track_ax = self.track_figure.add_subplot(111)
+        self.track_canvas = FigureCanvas(self.track_figure)
         
         # 創建圖表管理器並設置回調
         self.plot_manager = PlotManager(self.figure)
@@ -168,20 +168,60 @@ class MapViewer(QMainWindow):
         """)
         
         track_plot_layout = QVBoxLayout(track_plot_container)
-        track_plot_layout.setContentsMargins(10, 10, 10, 10)
+        track_plot_layout.setContentsMargins(15, 15, 15, 15)
+        track_plot_layout.setSpacing(8)
         
-        # 創建右下角的軌跡圖
-        self.track_figure = Figure(figsize=(4, 4))
-        self.track_canvas = FigureCanvas(self.track_figure)
-        self.track_ax = self.track_figure.add_subplot(111)
+        # # 添加標題標籤
+        # title_label = QLabel("位置軌跡圖")
+        # title_label.setStyleSheet("""
+        #     QLabel {
+        #         color: #495057;
+        #         font-weight: bold;
+        #         font-size: 14px;
+        #         padding: 0 0 8px 0;
+        #     }
+        # """)
+        # track_plot_layout.addWidget(title_label)
         
-        # 添加導航工具欄
-        self.track_toolbar = NavigationToolbar(self.track_canvas, track_plot_container)
-        track_plot_layout.addWidget(self.track_toolbar)
-        track_plot_layout.addWidget(self.track_canvas)
+        # 創建水平布局來放置導航工具欄和軌跡圖
+        track_content_layout = QHBoxLayout()
+        
+        # 創建左側導航工具欄（縮放和平移）
+        self.track_toolbar = NavigationToolbar(self.track_canvas, track_plot_container, coordinates=False)
+        self.track_toolbar.setOrientation(Qt.Vertical)
+        self.track_toolbar.setStyleSheet("QToolBar { border: none; }")
+        
+        # 只保留縮放和平移工具
+        left_tools = []
+        for action in self.track_toolbar.actions():
+            if any(name in str(action.text()).lower() for name in ['pan', 'zoom', 'back', 'forward']):
+                left_tools.append(action)
+            else:
+                self.track_toolbar.removeAction(action)
+        
+        # 創建右側導航工具欄（保存和配置）
+        right_toolbar = NavigationToolbar(self.track_canvas, track_plot_container, coordinates=False)
+        right_toolbar.setOrientation(Qt.Vertical)
+        right_toolbar.setStyleSheet("QToolBar { border: none; }")
+        
+        # 只保留保存和配置工具
+        right_tools = []
+        for action in right_toolbar.actions():
+            if any(name in str(action.text()).lower() for name in ['save', 'subplots', 'customize','home']):
+                right_tools.append(action)
+            else:
+                right_toolbar.removeAction(action)
+        
+        # 添加到水平布局
+        track_content_layout.addWidget(self.track_toolbar)
+        track_content_layout.addWidget(self.track_canvas)
+        track_content_layout.addWidget(right_toolbar)
+        
+        # 將水平布局添加到主布局
+        track_plot_layout.addLayout(track_content_layout)
         
         # 設置軌跡圖的基本屬性
-        self.track_ax.set_title("位置軌跡圖", fontsize=12)
+        self.track_ax.set_title(" ", fontsize=8)
         self.track_ax.grid(True)
         self.track_ax.set_aspect('equal')
         
