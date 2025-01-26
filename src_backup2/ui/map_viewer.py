@@ -44,6 +44,7 @@ class MapViewer(QMainWindow):
         self.load_button = QPushButton("載入CSV")
         self.set_start_button = QPushButton("設定起點")  # 在這裡創建按鈕
         self.update_button = QPushButton("更新圖表")
+        self.switch_lap_button = QPushButton("切換單圈")
         
         # 設置UI
         self._init_ui()
@@ -52,6 +53,7 @@ class MapViewer(QMainWindow):
         self.load_button.clicked.connect(self.load_csv)
         self.set_start_button.clicked.connect(self.start_setting_start_point)
         self.update_button.clicked.connect(self.update_data_range)
+        self.switch_lap_button.clicked.connect(self.switch_lap)
         
         print("初始化完成：按鈕信號已連接")
 
@@ -112,7 +114,7 @@ class MapViewer(QMainWindow):
         """
         
         # 添加按鈕到頂部布局
-        for button in [self.load_button, self.set_start_button, self.update_button]:
+        for button in [self.load_button, self.set_start_button, self.update_button, self.switch_lap_button]:
             button.setStyleSheet(button_style)
             top_button_layout.addWidget(button)
         top_button_layout.addStretch()
@@ -925,3 +927,32 @@ class MapViewer(QMainWindow):
                 print("沒有保存的初始視圖範圍")
         except Exception as e:
             print(f"重置視圖時出錯: {str(e)}")
+
+    def switch_lap(self):
+        """切換單圈功能"""
+        try:
+            checked_items = []
+            for i in range(self.check_list.count()):
+                item = self.check_list.item(i)
+                if item.checkState() == Qt.Checked:
+                    item_data = item.data(Qt.UserRole)
+                    checked_items.append({
+                        'text': item.text(),
+                        'data': item_data
+                    })
+            
+            if checked_items:
+                print("\n=== 已勾選的範圍 ===")
+                for item in checked_items:
+                    print(f"項目文字: {item['text']}")
+                    print(f"項目數據: {item['data']}")
+                    if item['data']:
+                        description = item['data']['description']
+                        print(f"描述: {description}")
+                    print("---")
+            else:
+                print("沒有勾選任何範圍")
+            
+        except Exception as e:
+            print(f"切換單圈時出錯: {str(e)}")
+            QMessageBox.critical(self, "錯誤", f"切換單圈時出錯：{str(e)}")
