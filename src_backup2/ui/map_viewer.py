@@ -932,27 +932,47 @@ class MapViewer(QMainWindow):
         """切換單圈功能"""
         try:
             checked_items = []
+            checked_ids = []  # 新增: 儲存已勾選項目的ID
+            
+            # 收集已勾選的項目和ID
             for i in range(self.check_list.count()):
                 item = self.check_list.item(i)
                 if item.checkState() == Qt.Checked:
                     item_data = item.data(Qt.UserRole)
-                    checked_items.append({
-                        'text': item.text(),
-                        'data': item_data
-                    })
+                    checked_items.append(item_data)
+                    checked_ids.append(item_data['id'])  # 儲存項目ID
             
             if checked_items:
-                print("\n=== 已勾選的範圍 ===")
-                for item in checked_items:
-                    print(f"項目文字: {item['text']}")
-                    print(f"項目數據: {item['data']}")
-                    if item['data']:
-                        description = item['data']['description']
-                        print(f"描述: {description}")
-                    print("---")
+                # 更新軌跡圖標題
+                print(f"debug checked_items:{checked_items}")
+                if len(checked_ids) == 1:
+                    self.track_ax.set_title(f"範圍 {checked_ids[0]} 軌跡圖", fontsize=12)
+                else:
+                    id_str = ', '.join(str(id) for id in checked_ids)
+                    self.track_ax.set_title(f"範圍 {id_str} 軌跡圖", fontsize=12)
+                
+                # 使用 plot_manager 繪製圖表
+                success = self.plot_manager.plot_selected_ranges(
+                    checked_items,
+                    self.full_data,
+                    self.axes,
+                    self.canvas,
+                    self.track_ax,
+                    self.track_canvas
+                )
+                
+                if success:
+                    print("\n=== 已重繪範圍 ===")
+                    for id in checked_ids:
+                        print(f"範圍 {id}")
+                else:
+                    QMessageBox.warning(self, "警告", "繪製圖表時發生錯誤")
             else:
                 print("沒有勾選任何範圍")
+                QMessageBox.warning(self, "警告", "請先勾選要顯示的範圍")
             
         except Exception as e:
             print(f"切換單圈時出錯: {str(e)}")
+            import traceback
+            traceback.print_exc()
             QMessageBox.critical(self, "錯誤", f"切換單圈時出錯：{str(e)}")

@@ -1233,3 +1233,139 @@ class PlotManager:
                 
         except Exception as e:
             print(f"移除範圍高亮時出錯: {str(e)}")
+
+    def plot_selected_ranges(self, checked_items, full_data, axes, canvas, track_ax, track_canvas):
+        """繪製選中範圍的圖表"""
+        try:
+            # 清除所有子圖
+            for ax in axes:
+                ax.clear()
+            
+            # 檢查數據列
+            available_columns = full_data.columns.tolist()
+            print("\n=== 可用的數據列 ===")
+            print(available_columns)
+            
+            # 定義要使用的列名（根據實際數據列名調整）
+            y_columns = []
+            column_mapping = {
+                'G Speed': ['G Speed', 'G speed', 'g_speed', 'Speed', 'speed'],
+                'R Scale 1': ['R Scale 1', 'R scale1', 'R_scale1', 'Scale1', 'scale1'],
+                'R Scale 2': ['R Scale 2', 'R scale2', 'R_scale2', 'Scale2', 'scale2']
+            }
+            
+            # 檢查並獲取實際的列名
+            actual_columns = {}  # 存儲實際要使用的列名
+            for target, alternatives in column_mapping.items():
+                found = False
+                for alt in alternatives:
+                    if alt in available_columns:
+                        actual_columns[target] = alt
+                        y_columns.append(alt)
+                        print(f"找到 {target} 對應的列名: {alt}")
+                        found = True
+                        break
+                if not found:
+                    print(f"警告: 找不到 {target} 相關的數據列")
+            
+            print("\n=== 將使用的數據列 ===")
+            print(y_columns)
+            
+            if not y_columns:
+                print("錯誤: 沒有找到任何可用的數據列")
+                print("可用的列名:", available_columns)
+                return False
+            
+            # 檢查勾選項目
+            print("\n=== 勾選的項目 ===")
+            for i, item in enumerate(checked_items):
+                print(f"項目 {i}:", item)
+            
+            # 為每個找到的數據列創建子圖
+            for i, (ax, y_col) in enumerate(zip(axes[:len(y_columns)], y_columns)):
+                print(f"\n繪製第 {i+1} 個子圖: {y_col}")
+                
+                for index, item_data in enumerate(checked_items):
+                    # 解析索引
+                    description = item_data['description']
+                    range_id = item_data['id']  # 獲取項目的 id
+                    indices = {}
+                    for pair in description.split(','):
+                        key, value = pair.strip().split(':')
+                        indices[key.strip()] = int(value.strip())
+                    
+                    start_idx = indices['start_index']
+                    end_idx = indices['end_index']
+                    print(f"範圍 {index}: {start_idx} - {end_idx}")
+                    
+                    try:
+                        # 繪製數據
+                        x_indices = range(end_idx - start_idx)
+                        y_data = full_data[y_col].iloc[start_idx:end_idx].values
+                        ax.plot(x_indices, y_data, label=f'範圍 {range_id}')
+                        
+                        # 設置圖表屬性
+                        ax.set_title(y_col)
+                        ax.legend()
+                        ax.grid(True)
+                        ax.set_xlabel('索引')
+                        ax.set_ylabel(y_col)
+                    except Exception as e:
+                        print(f"繪製數據時出錯: {str(e)}")
+                        print(f"數據範圍: {start_idx} - {end_idx}")
+                        print(f"數據列: {y_col}")
+                        print(f"數據形狀: {len(y_data) if y_data is not None else 'None'}")
+            
+            # 更新主圖表
+            canvas.figure.tight_layout()
+            canvas.draw()
+            
+            # 更新軌跡圖
+            self.plot_track_for_ranges(checked_items, full_data, track_ax, track_canvas)
+            
+            return True
+            
+        except Exception as e:
+            print(f"繪製選中範圍時出錯: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return False
+
+    def plot_track_for_ranges(self, checked_items, full_data, track_ax, track_canvas):
+        """繪製軌跡圖"""
+        try:
+            track_ax.clear()
+            
+            # 確定座標列名
+            x_col = 'X' if 'X' in full_data.columns else 'Longitude'
+            y_col = 'Y' if 'Y' in full_data.columns else 'Latitude'
+            
+            # 繪製每個選中範圍的軌跡
+            for index, item_data in enumerate(checked_items):
+                description = item_data['description']
+                range_id = item_data['id']  # 獲取項目的 id
+                indices = {}
+                for pair in description.split(','):
+                    key, value = pair.split(':')
+                    indices[key] = int(value)
+                
+                start_idx = indices['start_index']
+                end_idx = indices['end_index']
+                
+                x_data = full_data[x_col][start_idx:end_idx]
+                y_data = full_data[y_col][start_idx:end_idx]
+                track_ax.plot(x_data, y_data, label=f'範圍 {range_id}')  # 使用 range_id 替代 index
+            
+            # 設置軌跡圖屬性
+            track_ax.set_title('位置軌跡圖')
+            track_ax.legend()
+            track_ax.grid(True)
+            track_ax.set_aspect('equal', adjustable='datalim')
+            
+            # 更新軌跡圖
+            track_canvas.draw()
+            
+        except Exception as e:
+            print(f"繪製軌跡圖時出錯: {str(e)}")
+            import traceback
+            traceback.print_exc()
