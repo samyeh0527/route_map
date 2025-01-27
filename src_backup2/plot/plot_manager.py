@@ -1227,14 +1227,17 @@ class PlotManager:
                 
         except Exception as e:
             print(f"移除範圍高亮時出錯: {str(e)}")
-
     def plot_selected_ranges(self, checked_items, full_data, axes, canvas, track_ax, track_canvas):
         """繪製選中範圍的圖表"""
         try:
             print("\n=== 重新編排索引後的範圍詳細資料 ===")
             
-            for ax in axes:
+            # 清除所有圖表
+            print("\n=== 開始清除所有圖表 ===")
+            for i, ax in enumerate(axes):
+                print(f"正在清除第 {i+1} 個圖表...")
                 ax.clear()
+            print("=== 圖表清除完成 ===\n")
             
             y_columns = ['G Speed', 'R Scale 1', 'R Scale 2']
             
@@ -1245,7 +1248,7 @@ class PlotManager:
                 
                 start_idx = int(description.split(',')[0].split(':')[1])
                 end_idx = int(description.split(',')[1].split(':')[1])
-                data_count = end_idx - start_idx
+                data_count = end_idx - start_idx + 1  # 修正資料筆數計算
                 
                 print(f"\n範圍 {range_id}:")
                 print(f"原始索引範圍: {start_idx} - {end_idx}")
@@ -1283,14 +1286,10 @@ class PlotManager:
                 
                 print("---")
             
-            # 原有的繪圖邏輯保持不變
+            # 為每個勾選的範圍繪製對應的圖表
             for i, (ax, y_col) in enumerate(zip(axes[:len(y_columns)], y_columns)):
                 if y_col in full_data.columns:
-                    new_indices = []
-                    y_values = []
-                    current_index = 0
-                    range_boundaries = []
-                    
+                    # 獲取該範圍的數據
                     for item_data in checked_items:
                         description = item_data['description']
                         range_id = item_data['id']
@@ -1298,43 +1297,63 @@ class PlotManager:
                         start_idx = int(description.split(',')[0].split(':')[1])
                         end_idx = int(description.split(',')[1].split(':')[1])
                         
-                        range_data = full_data[y_col].iloc[start_idx:end_idx].values
-                        range_indices = list(range(len(range_data)))
-                        new_indices.extend(range_indices)
-                        y_values.extend(range_data)
+                        range_data = full_data[y_col].iloc[start_idx:end_idx+1].values
+                        # 創建從0開始的新索引
+                        new_indices = list(range(len(range_data)))
                         
-                        range_boundaries.append({
-                            'id': range_id,
-                            'start': current_index,
-                            'end': current_index + len(range_data),
-                            'data_count': len(range_data)
-                        })
-                        
-                        current_index += len(range_data)
+                        # 繪製數據
+                        ax.plot(new_indices, range_data, '-', linewidth=1, label=f'範圍 {range_id}')
                     
-                    if new_indices and y_values:
-                        ax.plot(new_indices, y_values, '-', linewidth=1)
-                        
-                        ax.set_title(y_col)
-                        ax.grid(True)
-                        ax.set_xlabel('新索引')
-                        ax.set_ylabel(y_col)
-                        
-                        for boundary in range_boundaries:
-                            if boundary['start'] > 0:
-                                ax.axvline(x=boundary['start'], color='gray', linestyle='--', alpha=0.5)
-                            
-                            mid_point = (boundary['start'] + boundary['end']) // 2
-                            ax.text(mid_point, ax.get_ylim()[1], 
-                                   f'範圍 {boundary["id"]}\n({boundary["data_count"]}筆)',
-                                   horizontalalignment='center',
-                                   verticalalignment='bottom',
-                                   bbox=dict(facecolor='white', alpha=0.7))
-            
+                    # 設置圖表屬性
+                    ax.set_title(y_col, fontsize=10)
+                    ax.grid(True)
+                    ax.set_xlabel('新索引')
+                    ax.set_ylabel(y_col)
+                    
+                    # 添加圖例
+                    if len(checked_items) > 1:
+                        ax.legend()
+                    
+                    # 添加資料筆數標籤
+                    ax.text(0.02, 0.98, 
+                           f'資料筆數: {data_count}',
+                           transform=ax.transAxes,
+                           verticalalignment='top',
+                           horizontalalignment='left',
+                           bbox=dict(facecolor='white', alpha=0.7))
+        
             canvas.figure.tight_layout()
             canvas.draw()
             
+            # 繪製軌跡圖
             self.plot_track_for_ranges(checked_items, full_data, track_ax, track_canvas)
+            
+            # DEBUG: 創建新視窗顯示圖表
+            debug_fig = plt.figure(figsize=(12, 8))
+            debug_axes = []
+            for i, y_col in enumerate(y_columns, 1):
+                debug_ax = debug_fig.add_subplot(len(y_columns), 1, i)
+                debug_axes.append(debug_ax)
+                
+                if y_col in full_data.columns:
+                    for item_data in checked_items:
+                        description = item_data['description']
+                        range_id = item_data['id']
+                        
+                        start_idx = int(description.split(',')[0].split(':')[1])
+                        end_idx = int(description.split(',')[1].split(':')[1])
+                        
+                        range_data = full_data[y_col].iloc[start_idx:end_idx+1].values
+                        new_indices = list(range(len(range_data)))
+                        
+                        debug_ax.plot(new_indices, range_data, '-', linewidth=1, label=f'範圍 {range_id}')
+                        debug_ax.set_title(y_col)
+                        debug_ax.grid(True)
+                        if len(checked_items) > 1:
+                            debug_ax.legend()
+            
+            debug_fig.tight_layout()
+            plt.show()  # 顯示debug視窗
             
             print("\n=== 範圍資料輸出完成 ===")
             return True
