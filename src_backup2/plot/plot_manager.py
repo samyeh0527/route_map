@@ -813,7 +813,7 @@ class PlotManager:
             
             # 呼叫 analyze_ranges 進行分析
             analyze =self.analyze_ranges(index)
-            print(analyze,"\n",type(analyze),"\n",len(analyze))  
+            #print(analyze,"\n",type(analyze),"\n",len(analyze))  
             print(f"起點已設定在索引: {index}")
             
         except Exception as e:
@@ -1041,19 +1041,18 @@ class PlotManager:
         try:
             # 創建進度對話框
             progress = QProgressDialog("分析數據範圍中...", None, 0, 0)
-            progress.setWindowModality(Qt.WindowModal)  # 鎖住主窗口
+            progress.setWindowModality(Qt.WindowModal)
             progress.setWindowTitle("請稍候")
-            progress.setCancelButton(None)  # 移除取消按鈕
-            progress.setMinimumDuration(0)  # 立即顯示
+            progress.setCancelButton(None)
+            progress.setMinimumDuration(0)
             progress.setWindowFlags(
-                progress.windowFlags() & ~Qt.WindowCloseButtonHint  # 移除關閉按鈕
+                progress.windowFlags() & ~Qt.WindowCloseButtonHint
             )
             progress.show()
             
-            # 強制處理事件，確保進度對話框顯示
             QApplication.processEvents()
             
-            data = self.data_list[0]  # 假設使用第一個數據集
+            data = self.data_list[0]
             data['Time'] = pd.to_datetime(data['Time'])
             
             x_col = 'X' if 'X' in data.columns else 'Longitude'
@@ -1061,15 +1060,13 @@ class PlotManager:
             start_x = data[x_col].iloc[start_index]
             start_y = data[y_col].iloc[start_index]
             
-            # 調整容許誤差範圍
-            tolerance = 0.00015  # 增加誤差範圍
+            tolerance = 0.00015
             
             ranges = []
             current_range = 1
             last_match_index = start_index
-            in_range = False  # 新增：追蹤是否正在一個範圍內
+            in_range = False
             
-            # 從起點後開始搜尋
             for i in range(start_index + 1, len(data)):
                 if i % 100 == 0:
                     progress.setLabelText(f"分析數據範圍中...\n已處理: {i}/{len(data)} 筆數據")
@@ -1079,18 +1076,17 @@ class PlotManager:
                 current_y = data[y_col].iloc[i]
                 current_time = data['Time'].iloc[i]
                 
-                # 檢查是否回到起點位置
                 x_match = abs(current_x - start_x) <= tolerance
                 y_match = abs(current_y - start_y) <= tolerance
                 
                 if x_match and y_match:
-                    # 如果已經離開過起點區域，且現在又回到起點
                     if not in_range:
                         time_diff = (current_time - data['Time'].iloc[last_match_index]).total_seconds()
                         
-                        # 如果時間差大於5秒，則視為有效範圍
                         if time_diff >= 5:
-                            # 輸出詳細的除錯信息
+                            # 計算該範圍內的資料筆數
+                            data_count = i - last_match_index + 1
+                            
                             print(f"\n找到範圍 {current_range}:")
                             print(f"起點: 索引 {last_match_index}")
                             print(f"  座標: ({data[x_col].iloc[last_match_index]}, {data[y_col].iloc[last_match_index]})")
@@ -1098,8 +1094,8 @@ class PlotManager:
                             print(f"終點: 索引 {i}")
                             print(f"  座標: ({current_x}, {current_y})")
                             print(f"  時間: {current_time}")
+                            print(f"資料筆數: {data_count}")
                             
-                            # 格式化時間差
                             hours = int(time_diff // 3600)
                             minutes = int((time_diff % 3600) // 60)
                             seconds = int(time_diff % 60)
@@ -1114,21 +1110,19 @@ class PlotManager:
                                 'start_time': data['Time'].iloc[last_match_index],
                                 'end_time': current_time,
                                 'duration': time_diff,
-                                'duration_str': time_str
+                                'duration_str': time_str,
+                                'data_count': data_count  # 新增資料筆數
                             })
                             
                             current_range += 1
                             last_match_index = i
                             in_range = True
                 else:
-                    # 當離開起點區域時
                     if in_range:
                         in_range = False
             
-            # 關閉進度對話框
             progress.close()
             
-            # 如果有回調函數，調用它來更新 check_list
             if self.range_update_callback:
                 self.range_update_callback(ranges)
             
@@ -1237,92 +1231,112 @@ class PlotManager:
     def plot_selected_ranges(self, checked_items, full_data, axes, canvas, track_ax, track_canvas):
         """繪製選中範圍的圖表"""
         try:
-            # 清除所有子圖
+            print("\n=== 重新編排索引後的範圍詳細資料 ===")
+            
             for ax in axes:
                 ax.clear()
             
-            # 檢查數據列
-            available_columns = full_data.columns.tolist()
-            print("\n=== 可用的數據列 ===")
-            print(available_columns)
+            y_columns = ['G Speed', 'R Scale 1', 'R Scale 2']
             
-            # 定義要使用的列名（根據實際數據列名調整）
-            y_columns = []
-            column_mapping = {
-                'G Speed': ['G Speed', 'G speed', 'g_speed', 'Speed', 'speed'],
-                'R Scale 1': ['R Scale 1', 'R scale1', 'R_scale1', 'Scale1', 'scale1'],
-                'R Scale 2': ['R Scale 2', 'R scale2', 'R_scale2', 'Scale2', 'scale2']
-            }
-            
-            # 檢查並獲取實際的列名
-            actual_columns = {}  # 存儲實際要使用的列名
-            for target, alternatives in column_mapping.items():
-                found = False
-                for alt in alternatives:
-                    if alt in available_columns:
-                        actual_columns[target] = alt
-                        y_columns.append(alt)
-                        print(f"找到 {target} 對應的列名: {alt}")
-                        found = True
-                        break
-                if not found:
-                    print(f"警告: 找不到 {target} 相關的數據列")
-            
-            print("\n=== 將使用的數據列 ===")
-            print(y_columns)
-            
-            if not y_columns:
-                print("錯誤: 沒有找到任何可用的數據列")
-                print("可用的列名:", available_columns)
-                return False
-            
-            # 檢查勾選項目
-            print("\n=== 勾選的項目 ===")
-            for i, item in enumerate(checked_items):
-                print(f"項目 {i}:", item)
-            
-            # 為每個找到的數據列創建子圖
-            for i, (ax, y_col) in enumerate(zip(axes[:len(y_columns)], y_columns)):
-                print(f"\n繪製第 {i+1} 個子圖: {y_col}")
+            # 先計算並打印每個範圍的詳細資訊
+            for item_data in checked_items:
+                description = item_data['description']
+                range_id = item_data['id']
                 
-                for index, item_data in enumerate(checked_items):
-                    # 解析索引
-                    description = item_data['description']
-                    range_id = item_data['id']  # 獲取項目的 id
-                    indices = {}
-                    for pair in description.split(','):
-                        key, value = pair.strip().split(':')
-                        indices[key.strip()] = int(value.strip())
-                    
-                    start_idx = indices['start_index']
-                    end_idx = indices['end_index']
-                    print(f"範圍 {index}: {start_idx} - {end_idx}")
-                    
-                    try:
-                        # 繪製數據
-                        x_indices = range(end_idx - start_idx)
-                        y_data = full_data[y_col].iloc[start_idx:end_idx].values
-                        ax.plot(x_indices, y_data, label=f'範圍 {range_id}')
-                        
-                        # 設置圖表屬性
-                        ax.set_title(y_col)
-                        ax.legend()
-                        ax.grid(True)
-                        ax.set_xlabel('索引')
-                        ax.set_ylabel(y_col)
-                    except Exception as e:
-                        print(f"繪製數據時出錯: {str(e)}")
-                        print(f"數據範圍: {start_idx} - {end_idx}")
-                        print(f"數據列: {y_col}")
-                        print(f"數據形狀: {len(y_data) if y_data is not None else 'None'}")
+                start_idx = int(description.split(',')[0].split(':')[1])
+                end_idx = int(description.split(',')[1].split(':')[1])
+                data_count = end_idx - start_idx
+                
+                print(f"\n範圍 {range_id}:")
+                print(f"原始索引範圍: {start_idx} - {end_idx}")
+                print(f"資料筆數: {data_count}")
+                print(f"新索引範圍: 0 - {data_count-1}")
+                
+                # 打印該範圍的起始和結束時間
+                if 'Time' in full_data.columns:
+                    start_time = full_data['Time'].iloc[start_idx]
+                    end_time = full_data['Time'].iloc[end_idx]
+                    duration = (end_time - start_time).total_seconds()
+                    hours = int(duration // 3600)
+                    minutes = int((duration % 3600) // 60)
+                    seconds = int(duration % 60)
+                    print(f"起始時間: {start_time}")
+                    print(f"結束時間: {end_time}")
+                    print(f"持續時間: {hours:02d}:{minutes:02d}:{seconds:02d}")
+                
+                # 打印該範圍的起始和結束座標
+                x_col = 'X' if 'X' in full_data.columns else 'Longitude'
+                y_col = 'Y' if 'Y' in full_data.columns else 'Latitude'
+                start_x = full_data[x_col].iloc[start_idx]
+                start_y = full_data[y_col].iloc[start_idx]
+                end_x = full_data[x_col].iloc[end_idx]
+                end_y = full_data[y_col].iloc[end_idx]
+                print(f"起始座標: ({start_x}, {start_y})")
+                print(f"結束座標: ({end_x}, {end_y})")
+                
+                # 打印速度和R Scale的起始和結束值
+                for col in ['G Speed', 'R Scale 1', 'R Scale 2']:
+                    if col in full_data.columns:
+                        start_val = full_data[col].iloc[start_idx]
+                        end_val = full_data[col].iloc[end_idx]
+                        print(f"{col}: 起始值 = {start_val:.2f}, 結束值 = {end_val:.2f}")
+                
+                print("---")
             
-            # 更新主圖表
+            # 原有的繪圖邏輯保持不變
+            for i, (ax, y_col) in enumerate(zip(axes[:len(y_columns)], y_columns)):
+                if y_col in full_data.columns:
+                    new_indices = []
+                    y_values = []
+                    current_index = 0
+                    range_boundaries = []
+                    
+                    for item_data in checked_items:
+                        description = item_data['description']
+                        range_id = item_data['id']
+                        
+                        start_idx = int(description.split(',')[0].split(':')[1])
+                        end_idx = int(description.split(',')[1].split(':')[1])
+                        
+                        range_data = full_data[y_col].iloc[start_idx:end_idx].values
+                        range_indices = list(range(len(range_data)))
+                        new_indices.extend(range_indices)
+                        y_values.extend(range_data)
+                        
+                        range_boundaries.append({
+                            'id': range_id,
+                            'start': current_index,
+                            'end': current_index + len(range_data),
+                            'data_count': len(range_data)
+                        })
+                        
+                        current_index += len(range_data)
+                    
+                    if new_indices and y_values:
+                        ax.plot(new_indices, y_values, '-', linewidth=1)
+                        
+                        ax.set_title(y_col)
+                        ax.grid(True)
+                        ax.set_xlabel('新索引')
+                        ax.set_ylabel(y_col)
+                        
+                        for boundary in range_boundaries:
+                            if boundary['start'] > 0:
+                                ax.axvline(x=boundary['start'], color='gray', linestyle='--', alpha=0.5)
+                            
+                            mid_point = (boundary['start'] + boundary['end']) // 2
+                            ax.text(mid_point, ax.get_ylim()[1], 
+                                   f'範圍 {boundary["id"]}\n({boundary["data_count"]}筆)',
+                                   horizontalalignment='center',
+                                   verticalalignment='bottom',
+                                   bbox=dict(facecolor='white', alpha=0.7))
+            
             canvas.figure.tight_layout()
             canvas.draw()
             
-            # 更新軌跡圖
             self.plot_track_for_ranges(checked_items, full_data, track_ax, track_canvas)
             
+            print("\n=== 範圍資料輸出完成 ===")
             return True
             
         except Exception as e:
