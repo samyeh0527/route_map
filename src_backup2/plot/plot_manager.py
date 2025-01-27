@@ -405,64 +405,25 @@ class PlotManager:
             return
         
         try:
-            # 檢查是否有選中的範圍數據
-            if not hasattr(self, 'current_checked_items') or not self.current_checked_items:
-                print("未選擇任何範圍數據")
+            # 檢查是否有數據
+            if not self.data_list:
+                print("警告：沒有可用的數據")
                 return
             
-            # 計算所有選中範圍的最大索引
-            max_index = 0
-            for item in self.current_checked_items:
-                description = item['description']
-                start_idx = int(description.split(',')[0].split(':')[1])
-                end_idx = int(description.split(',')[1].split(':')[1])
-                range_length = end_idx - start_idx + 1
-                max_index += range_length
-            
-            # 如果點擊的是軌跡圖
-            if event.inaxes == self.axes.get('position'):
-                if hasattr(self, 'combined_track_data'):
-                    data = self.combined_track_data
-                    x_col = 'X' if 'X' in data.columns else 'Longitude'
-                    y_col = 'Y' if 'Y' in data.columns else 'Latitude'
-                    
-                    print("\n=== 處理軌跡圖點擊 ===")
-                    print(f"點擊座標: ({event.xdata:.2f}, {event.ydata:.2f})")
-                    print(f"數據長度: {len(data)}")
-                    
-                    # 計算點擊位置到所有數據點的距離
-                    distances = ((data[x_col] - event.xdata) ** 2 + 
-                               (data[y_col] - event.ydata) ** 2) ** 0.5
-                    nearest_idx = distances.argmin()
-                    
-                    # 檢查索引是否在有效範圍內
-                    if nearest_idx >= max_index:
-                        print(f"警告：索引 {nearest_idx} 超出有效範圍 (最大值: {max_index-1})")
-                        return
-                    
-                    # 獲取實際的數據點座標
-                    x = data[x_col].iloc[nearest_idx]
-                    y = data[y_col].iloc[nearest_idx]
-                    
-                    print(f"選中點座標: ({x:.2f}, {y:.2f})")
-                    print(f"使用索引: {nearest_idx}")
-                    
-                    # 更新軌跡圖的標記
-                    point = event.inaxes.scatter(x, y, color='red', s=100, zorder=5)
-                    self.crosshair_lines.append(point)
-                    
-                    # 更新主圖表
-                    self._update_main_plots_with_reset_index(nearest_idx)
-                    
-                    # 觸發回調
-                    if self.click_callback:
-                        self.click_callback(nearest_idx)
-                    
-                    print("=== 點擊處理完成 ===\n")
-                
-            # 點擊主圖表時的處理
-            else:
+            # 檢查是否有選中的範圍數據
+            if hasattr(self, 'current_checked_items') and self.current_checked_items:
+                # 使用選中範圍的數據
                 nearest_idx = int(round(event.xdata))
+                
+                # 計算所有選中範圍的最大索引
+                max_index = 0
+                for item in self.current_checked_items:
+                    description = item['description']
+                    start_idx = int(description.split(',')[0].split(':')[1])
+                    end_idx = int(description.split(',')[1].split(':')[1])
+                    range_length = end_idx - start_idx + 1
+                    max_index += range_length
+                    
                 # 檢查索引是否在有效範圍內
                 if 0 <= nearest_idx < max_index:
                     print(f"\n=== 處理主圖表點擊 ===")
@@ -475,6 +436,20 @@ class PlotManager:
                     print("=== 點擊處理完成 ===\n")
                 else:
                     print(f"警告：索引 {nearest_idx} 超出有效範圍 (最大值: {max_index-1})")
+            else:
+                # 使用原始數據
+                nearest_idx = int(round(event.xdata))
+                if 0 <= nearest_idx < len(self.data_list[0]):
+                    print(f"\n=== 處理主圖表點擊 ===")
+                    print(f"點擊位置索引: {nearest_idx}")
+                    self.highlight_point(nearest_idx)
+                    
+                    # 觸發回調
+                    if self.click_callback:
+                        self.click_callback(nearest_idx)
+                    print("=== 點擊處理完成 ===\n")
+                else:
+                    print(f"警告：索引 {nearest_idx} 超出有效範圍 (最大值: {len(self.data_list[0])-1})")
         
         except Exception as e:
             print(f"處理圖表點擊事件時出錯: {str(e)}")
