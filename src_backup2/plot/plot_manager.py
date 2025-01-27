@@ -410,8 +410,14 @@ class PlotManager:
                 print("未選擇任何範圍數據")
                 return
             
-            # 在每次點擊時先清除所有舊的標記
-            self._clear_all_highlights()
+            # 計算所有選中範圍的最大索引
+            max_index = 0
+            for item in self.current_checked_items:
+                description = item['description']
+                start_idx = int(description.split(',')[0].split(':')[1])
+                end_idx = int(description.split(',')[1].split(':')[1])
+                range_length = end_idx - start_idx + 1
+                max_index += range_length
             
             # 如果點擊的是軌跡圖
             if event.inaxes == self.axes.get('position'):
@@ -430,58 +436,45 @@ class PlotManager:
                     nearest_idx = distances.argmin()
                     
                     # 檢查索引是否在有效範圍內
-                    if nearest_idx >= len(data):
-                        print(f"警告：索引 {nearest_idx} 超出範圍 (最大值: {len(data)-1})")
+                    if nearest_idx >= max_index:
+                        print(f"警告：索引 {nearest_idx} 超出有效範圍 (最大值: {max_index-1})")
                         return
                     
                     # 獲取實際的數據點座標
                     x = data[x_col].iloc[nearest_idx]
                     y = data[y_col].iloc[nearest_idx]
                     
-                    # 檢查是否需要使用原始索引
-                    original_index = data.index[nearest_idx]
-                    print(f"重設後索引: {nearest_idx}")
-                    print(f"原始索引: {original_index}")
                     print(f"選中點座標: ({x:.2f}, {y:.2f})")
-                    
-                    # 確保使用重設後的索引
-                    if hasattr(self, 'original_indices'):
-                        print("使用重設後的索引進行更新")
-                        use_index = nearest_idx
-                    else:
-                        print("使用原始索引進行更新")
-                        use_index = original_index
+                    print(f"使用索引: {nearest_idx}")
                     
                     # 更新軌跡圖的標記
                     point = event.inaxes.scatter(x, y, color='red', s=100, zorder=5)
                     self.crosshair_lines.append(point)
                     
-                    # 使用正確的索引更新主圖表
-                    self._update_main_plots_with_reset_index(use_index)
+                    # 更新主圖表
+                    self._update_main_plots_with_reset_index(nearest_idx)
                     
                     # 觸發回調
                     if self.click_callback:
-                        self.click_callback(use_index)
+                        self.click_callback(nearest_idx)
                     
                     print("=== 點擊處理完成 ===\n")
                 
             # 點擊主圖表時的處理
             else:
                 nearest_idx = int(round(event.xdata))
-                if hasattr(self, 'combined_track_data'):
-                    data = self.combined_track_data
-                    # 檢查索引是否在有效範圍內
-                    if 0 <= nearest_idx < len(data):
-                        print(f"\n=== 處理主圖表點擊 ===")
-                        print(f"點擊位置索引: {nearest_idx}")
-                        self._update_all_plots_with_reset_index(nearest_idx)
-                        
-                        # 觸發回調
-                        if self.click_callback:
-                            self.click_callback(nearest_idx)
-                        print("=== 點擊處理完成 ===\n")
-                    else:
-                        print(f"警告：索引 {nearest_idx} 超出範圍 (最大值: {len(data)-1})")
+                # 檢查索引是否在有效範圍內
+                if 0 <= nearest_idx < max_index:
+                    print(f"\n=== 處理主圖表點擊 ===")
+                    print(f"點擊位置索引: {nearest_idx}")
+                    self._update_all_plots_with_reset_index(nearest_idx)
+                    
+                    # 觸發回調
+                    if self.click_callback:
+                        self.click_callback(nearest_idx)
+                    print("=== 點擊處理完成 ===\n")
+                else:
+                    print(f"警告：索引 {nearest_idx} 超出有效範圍 (最大值: {max_index-1})")
         
         except Exception as e:
             print(f"處理圖表點擊事件時出錯: {str(e)}")
@@ -495,6 +488,14 @@ class PlotManager:
                 return
             
             data = self.combined_track_data
+            
+            # 檢查索引是否在有效範圍內
+            if index >= len(data):
+                print(f"警告：索引 {index} 超出範圍 (最大值: {len(data)-1})")
+                return
+            
+            # 清除舊的標記
+            self._clear_all_highlights()
             
             # 更新主圖表上的標記
             for ax_name, ax in self.axes.items():
@@ -780,7 +781,7 @@ class PlotManager:
             
             # 更新軌跡圖上的點
             self.update_track_point(index, track_ax, track_canvas)
-            
+            print(f"已更新軌跡圖上的點 clsaa name {self.update_track_point.__name__}")
             # 清除舊的標記線
             if hasattr(self, 'start_point_line') and self.start_point_line:
                 for line in self.start_point_line:
@@ -994,15 +995,36 @@ class PlotManager:
         """找到最接近點擊位置的數據點索引"""
         try:
             # 檢查是否有範圍數據
-            if hasattr(self, 'combined_track_data'):
+            if hasattr(self, 'combined_track_data') and hasattr(self, 'current_checked_items') and self.current_checked_items:
                 data = self.combined_track_data
+                
+                # 檢查數據是否為空
+                if data.empty:
+                    print("警告：選定範圍內沒有數據")
+                    return None
+                
             elif self.data_list:
                 data = self.data_list[0]
+                # 檢查數據是否為空
+                if data.empty:
+                    print("警告：數據列表為空")
+                    return None
             else:
+                print("警告：沒有可用的數據")
                 return None
             
             x_col = 'X' if 'X' in data.columns else 'Longitude'
             y_col = 'Y' if 'Y' in data.columns else 'Latitude'
+            
+            # 確保所需的列存在
+            if x_col not in data.columns or y_col not in data.columns:
+                print(f"警告：找不到必要的列 {x_col} 或 {y_col}")
+                return None
+            
+            # 檢查座標值是否有效
+            if pd.isna(x_click) or pd.isna(y_click):
+                print("警告：無效的點擊座標")
+                return None
             
             # 計算點擊位置到所有點的距離
             distances = np.sqrt(
@@ -1010,13 +1032,15 @@ class PlotManager:
                 (data[y_col] - y_click) ** 2
             )
             
+            # 檢查距離序列是否為空
+            if distances.empty:
+                print("警告：距離計算結果為空")
+                return None
+            
             # 找到最小距離的索引
             nearest_idx = distances.idxmin()
             
-            # 如果使用的是重設索引的數據，需要使用原始索引
-            if hasattr(self, 'combined_track_data'):
-                nearest_idx = data.index[nearest_idx]
-            
+            # 如果使用的是重設索引的數據，直接返回索引
             return nearest_idx
             
         except Exception as e:
@@ -1032,13 +1056,20 @@ class PlotManager:
             if hasattr(self, 'combined_track_data'):
                 data = self.combined_track_data
                 print(f"數據長度: {len(data)} 筆")
-                # 檢查索引是否超出範圍
-                if index >= len(data):
-                    print(f"索引 {index} 超出範圍數據長度 {len(data)}")
+                print(f"current_checked_items: {self.current_checked_items}")
+                # 獲取第一個範圍的長度
+                first_range = self.current_checked_items[0]
+                description = first_range['description']
+                start_idx = int(description.split(',')[0].split(':')[1])
+                end_idx = int(description.split(',')[1].split(':')[1])
+                first_range_length = end_idx - start_idx + 1
+                
+                # 檢查索引是否超出第一個範圍
+                if index >= first_range_length:
+                    print(f"索引 {index} 超出第一個範圍長度 {first_range_length}")
                     return
                     
-                # 使用重設後的索引,不需要轉換
-                print(f"使用重設後索引: {index}")
+                print(f"使用第一個範圍的索引: {index}")
             elif self.data_list:
                 data = self.data_list[0]
                 print(f"使用原始索引: {index}")
@@ -1414,11 +1445,14 @@ class PlotManager:
             x_col = 'X' if 'X' in full_data.columns else 'Longitude'
             y_col = 'Y' if 'Y' in full_data.columns else 'Latitude'
             
-            # 創建一個新的 DataFrame 來存儲所有選中範圍的數據
+            # 創建一個新的 DataFrame 來存儲第一個選中範圍的數據
             combined_data = pd.DataFrame()
             
+            # 反轉列表順序，使第一個選中的範圍顯示在最上層
+            reversed_items = list(reversed(checked_items))
+            
             # 繪製每個選中範圍的軌跡
-            for index, item_data in enumerate(checked_items):
+            for index, item_data in enumerate(reversed_items):
                 description = item_data['description']
                 range_id = item_data['id']
                 indices = {}
@@ -1433,20 +1467,18 @@ class PlotManager:
                 range_data = full_data.iloc[start_idx:end_idx+1].copy()
                 range_data.reset_index(drop=True, inplace=True)
                 
-                # 將數據添加到組合數據中
-                if combined_data.empty:
+                # 只保存第一個選中範圍的數據用於索引
+                if index == len(reversed_items) - 1:  # 第一個選中的範圍
                     combined_data = range_data
-                else:
-                    # 確保索引連續
-                    range_data.index = range_data.index + len(combined_data)
-                    combined_data = pd.concat([combined_data, range_data])
                 
                 # 使用重設後的索引繪製軌跡
                 x_data = range_data[x_col]
                 y_data = range_data[y_col]
-                track_ax.plot(x_data, y_data, label=f'範圍 {range_id}')
+                # 設置zorder，確保第一個選中的範圍在最上層
+                zorder = index + 1
+                track_ax.plot(x_data, y_data, label=f'範圍 {range_id}', zorder=zorder)
             
-            # 存儲組合後的數據供後續使用
+            # 存儲第一個選中範圍的數據供後續使用
             self.combined_track_data = combined_data
             
             # 設置軌跡圖屬性

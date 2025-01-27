@@ -734,6 +734,7 @@ class MapViewer(QMainWindow):
         try:
             # 清除舊的標記點並更新軌跡圖
             self.plot_manager.update_track_point(index, self.track_ax, self.track_canvas)
+            print(f"已更新軌跡圖上的點 class name _on_plot_clicked")
         except Exception as e:
             print(f"處理主圖表點擊回調時出錯: {str(e)}")
             import traceback
@@ -832,6 +833,7 @@ class MapViewer(QMainWindow):
             else:
                 # 委託 PlotManager 處理數據相關操作
                 self.plot_manager.update_track_point(nearest_idx, self.track_ax, self.track_canvas)
+                print(f"已更新軌跡圖上的點 def name : _on_track_click ")
                 print(f"已更新顯示位置:")
                 print(f"索引: {nearest_idx}")
                 print(f"經度: {x:.6f}")
@@ -964,9 +966,11 @@ class MapViewer(QMainWindow):
                     self.track_ax.set_title(f"範圍 {id_str} 軌跡圖", fontsize=12)
                 
                 # 使用 plot_manager 繪製圖表
+                # 重新排序 checked_items,讓第一個選的範圍在最後繪製
+                #checked_items.reverse()
                 success = self.plot_manager.plot_selected_ranges(
                     checked_items,
-                    self.full_data,
+                    self.full_data, 
                     self.axes,
                     self.canvas,
                     self.track_ax,
