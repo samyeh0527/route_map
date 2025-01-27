@@ -675,7 +675,7 @@ class MapViewer(QMainWindow):
                 self.track_ax.set_xlabel('經度', fontsize=10)
                 self.track_ax.set_ylabel('緯度', fontsize=10)
             
-            self.track_ax.set_title("位置軌跡圖", fontsize=12)
+            self.track_ax.set_title("位置軌跡圖", fontsize=8)
             self.track_ax.grid(True)
             self.track_ax.set_aspect('equal', adjustable='datalim')  # 修改：使用 adjustable='datalim'
             
@@ -813,17 +813,29 @@ class MapViewer(QMainWindow):
             if nearest_idx is None:
                 return
             
+            # 獲取點擊位置的經緯度
+            x_col = 'X' if 'X' in self.full_data.columns else 'Longitude'
+            y_col = 'Y' if 'Y' in self.full_data.columns else 'Latitude'
+            x = self.full_data[x_col].iloc[nearest_idx]
+            y = self.full_data[y_col].iloc[nearest_idx]
+            
             if self.is_setting_start_point:
                 # 委託 PlotManager 處理數據相關操作
                 self.plot_manager.set_start_point(nearest_idx, self.track_ax, self.track_canvas)
                 # UI 狀態管理保留在 MapViewer
                 self.is_setting_start_point = False
                 self.set_start_button.setText("設定起點")
-                print(f"已在軌跡圖上設定起點，索引: {nearest_idx}")
+                print(f"已在軌跡圖上設定起點:")
+                print(f"索引: {nearest_idx}")
+                print(f"經度: {x:.6f}")
+                print(f"緯度: {y:.6f}")
             else:
                 # 委託 PlotManager 處理數據相關操作
                 self.plot_manager.update_track_point(nearest_idx, self.track_ax, self.track_canvas)
-                print(f"已更新顯示位置，索引: {nearest_idx}")
+                print(f"已更新顯示位置:")
+                print(f"索引: {nearest_idx}")
+                print(f"經度: {x:.6f}")
+                print(f"緯度: {y:.6f}")
 
         except Exception as e:
             print(f"處理軌跡圖點擊時出錯: {str(e)}")

@@ -401,190 +401,189 @@ class PlotManager:
 
     def _on_plot_click(self, event):
         """處理圖表點擊事件"""
-        if event.inaxes is None or not self.data_list:
+        if event.inaxes is None:
             return
         
         try:
-            data = self.data_list[0]
+            # 檢查是否有選中的範圍數據
+            if not hasattr(self, 'current_checked_items') or not self.current_checked_items:
+                print("未選擇任何範圍數據")
+                return
+            
+            # 在每次點擊時先清除所有舊的標記
+            self._clear_all_highlights()
             
             # 如果點擊的是軌跡圖
             if event.inaxes == self.axes.get('position'):
-                # 找到最近的數據點
-                if 'X' in data.columns and 'Y' in data.columns:
-                    distances = ((data['X'] - event.xdata) ** 2 + 
-                               (data['Y'] - event.ydata) ** 2) ** 0.5
+                if hasattr(self, 'combined_track_data'):
+                    data = self.combined_track_data
+                    x_col = 'X' if 'X' in data.columns else 'Longitude'
+                    y_col = 'Y' if 'Y' in data.columns else 'Latitude'
+                    
+                    print("\n=== 處理軌跡圖點擊 ===")
+                    print(f"點擊座標: ({event.xdata:.2f}, {event.ydata:.2f})")
+                    print(f"數據長度: {len(data)}")
+                    
+                    # 計算點擊位置到所有數據點的距離
+                    distances = ((data[x_col] - event.xdata) ** 2 + 
+                               (data[y_col] - event.ydata) ** 2) ** 0.5
                     nearest_idx = distances.argmin()
-                    x, y = data['X'].iloc[nearest_idx], data['Y'].iloc[nearest_idx]
-                elif 'Longitude' in data.columns and 'Latitude' in data.columns:
-                    distances = ((data['Longitude'] - event.xdata) ** 2 + 
-                               (data['Latitude'] - event.ydata) ** 2) ** 0.5
-                    nearest_idx = distances.argmin()
-                    x, y = data['Longitude'].iloc[nearest_idx], data['Latitude'].iloc[nearest_idx]
-                else:
-                    return
+                    
+                    # 檢查索引是否在有效範圍內
+                    if nearest_idx >= len(data):
+                        print(f"警告：索引 {nearest_idx} 超出範圍 (最大值: {len(data)-1})")
+                        return
+                    
+                    # 獲取實際的數據點座標
+                    x = data[x_col].iloc[nearest_idx]
+                    y = data[y_col].iloc[nearest_idx]
+                    
+                    # 檢查是否需要使用原始索引
+                    original_index = data.index[nearest_idx]
+                    print(f"重設後索引: {nearest_idx}")
+                    print(f"原始索引: {original_index}")
+                    print(f"選中點座標: ({x:.2f}, {y:.2f})")
+                    
+                    # 確保使用重設後的索引
+                    if hasattr(self, 'original_indices'):
+                        print("使用重設後的索引進行更新")
+                        use_index = nearest_idx
+                    else:
+                        print("使用原始索引進行更新")
+                        use_index = original_index
+                    
+                    # 更新軌跡圖的標記
+                    point = event.inaxes.scatter(x, y, color='red', s=100, zorder=5)
+                    self.crosshair_lines.append(point)
+                    
+                    # 使用正確的索引更新主圖表
+                    self._update_main_plots_with_reset_index(use_index)
+                    
+                    # 觸發回調
+                    if self.click_callback:
+                        self.click_callback(use_index)
+                    
+                    print("=== 點擊處理完成 ===\n")
                 
-                print(f"點擊軌跡圖位置，索引: {nearest_idx}")
-                
-                # 清除所有舊的標記
-                self._clear_all_highlights()
-                
-                # 更新軌跡圖的標記
-                point = event.inaxes.scatter(x, y, color='red', s=100, zorder=5)
-                self.crosshair_lines.append(point)
-                
-                # 更新主圖表
-                for ax_name, ax in self.axes.items():
-                    if ax_name != 'position':
-                        # 獲取對應的數據列
-                        column_mapping = {
-                            'speed': 'G Speed',
-                            'r_scale1': 'R Scale 1',
-                            'r_scale2': 'R Scale 2'
-                        }
-                        
-                        col_name = column_mapping.get(ax_name)
-                        if col_name and col_name in data.columns:
-                            value = data[col_name].iloc[nearest_idx]
-                            
-                            # 添加垂直線
-                            v_line = ax.axvline(x=nearest_idx, color='red', linestyle='--', alpha=0.5)
-                            self.crosshair_lines.append(v_line)
-                            
-                            # 添加高亮點
-                            point = ax.scatter(nearest_idx, value, color='red', s=100, zorder=5)
-                            self.crosshair_lines.append(point)
-                            
-                            # 添加數值標籤
-                            text = ax.text(
-                                nearest_idx, value,
-                                f'{value:.2f}',
-                                bbox=dict(facecolor='white', edgecolor='none', alpha=0.8),
-                                verticalalignment='bottom',
-                                horizontalalignment='right'
-                            )
-                            self.value_texts.append(text)
-                            
-                            # 添加索引標籤
-                            index_text = ax.text(
-                                0.02, 0.95,
-                                f'索引: {nearest_idx}',
-                                transform=ax.transAxes,
-                                bbox=dict(facecolor='white', edgecolor='none', alpha=0.8),
-                                verticalalignment='top',
-                                horizontalalignment='left'
-                            )
-                            self.value_texts.append(index_text)
-                
-                # 更新圖表
-                self.figure.canvas.draw_idle()
-                
-                # 觸發回調
-                if self.click_callback:
-                    self.click_callback(nearest_idx)
-                
+            # 點擊主圖表時的處理
             else:
-                # 點擊主圖表時的處理邏輯保持不變
                 nearest_idx = int(round(event.xdata))
-                if nearest_idx < 0 or nearest_idx >= len(data):
-                    return
-                
-                print(f"點擊主圖表位置，索引: {nearest_idx}")
-                self._update_all_plots(nearest_idx, data)
-                
-                # 觸發回調
-                if self.click_callback:
-                    self.click_callback(nearest_idx)
-            
+                if hasattr(self, 'combined_track_data'):
+                    data = self.combined_track_data
+                    # 檢查索引是否在有效範圍內
+                    if 0 <= nearest_idx < len(data):
+                        print(f"\n=== 處理主圖表點擊 ===")
+                        print(f"點擊位置索引: {nearest_idx}")
+                        self._update_all_plots_with_reset_index(nearest_idx)
+                        
+                        # 觸發回調
+                        if self.click_callback:
+                            self.click_callback(nearest_idx)
+                        print("=== 點擊處理完成 ===\n")
+                    else:
+                        print(f"警告：索引 {nearest_idx} 超出範圍 (最大值: {len(data)-1})")
+        
         except Exception as e:
             print(f"處理圖表點擊事件時出錯: {str(e)}")
             import traceback
             traceback.print_exc()
 
-    def _update_all_plots(self, index, data):
-        """更新所有圖表的顯示"""
+    def _update_main_plots_with_reset_index(self, index):
+        """使用重設後的索引更新主圖表"""
         try:
-            # 清除所有舊的標記
-            self._clear_all_highlights()
+            if not hasattr(self, 'combined_track_data'):
+                return
             
-            # 更新主圖表
+            data = self.combined_track_data
+            
+            # 更新主圖表上的標記
             for ax_name, ax in self.axes.items():
-                if ax_name == 'position':
-                    # 更新軌跡圖
-                    if 'Longitude' in data.columns and 'Latitude' in data.columns:
-                        x = data['Longitude'].iloc[index]
-                        y = data['Latitude'].iloc[index]
-                        point = ax.scatter(x, y, color='red', s=100, zorder=5)
-                        self.crosshair_lines.append(point)
-                        text = ax.text(
-                            x, y,
-                            f'經度: {x:.6f}\n緯度: {y:.6f}',
-                            bbox=dict(facecolor='white', edgecolor='none', alpha=0.8),
-                            verticalalignment='bottom',
-                            horizontalalignment='right'
-                        )
-                        self.value_texts.append(text)
-                    elif 'X' in data.columns and 'Y' in data.columns:
-                        x = data['X'].iloc[index]
-                        y = data['Y'].iloc[index]
-                        point = ax.scatter(x, y, color='red', s=100, zorder=5)
-                        self.crosshair_lines.append(point)
-                        text = ax.text(
-                            x, y,
-                            f'X: {x:.2f}\nY: {y:.2f}',
-                            bbox=dict(facecolor='white', edgecolor='none', alpha=0.8),
-                            verticalalignment='bottom',
-                            horizontalalignment='right'
-                        )
-                        self.value_texts.append(text)
-                else:
-                    # 更新其他圖表
+                if ax_name != 'position':
                     column_mapping = {
                         'speed': 'G Speed',
                         'r_scale1': 'R Scale 1',
                         'r_scale2': 'R Scale 2'
                     }
                     
-                    if ax_name in column_mapping:
-                        col_name = column_mapping[ax_name]
-                        if col_name in data.columns:
-                            value = data[col_name].iloc[index]
-                            
-                            # 添加垂直線
-                            v_line = ax.axvline(x=index, color='red', linestyle='--', alpha=0.5)
-                            self.crosshair_lines.append(v_line)
-                            
-                            # 添加高亮點
-                            point = ax.scatter(index, value, color='red', s=100, zorder=5)
-                            self.crosshair_lines.append(point)
-                            
-                            # 添加數值標籤
-                            text = ax.text(
-                                index, value,
-                                f'{value:.2f}',
-                                bbox=dict(facecolor='white', edgecolor='none', alpha=0.8),
-                                verticalalignment='bottom',
-                                horizontalalignment='right'
-                            )
-                            self.value_texts.append(text)
-            
-            # 在每個圖表上添加索引標籤
-            for ax_name, ax in self.axes.items():
-                if ax_name != 'position':
-                    index_text = ax.text(
-                        0.02, 0.95,
-                        f'索引: {index}',
-                        transform=ax.transAxes,
-                        bbox=dict(facecolor='white', edgecolor='none', alpha=0.8),
-                        verticalalignment='top',
-                        horizontalalignment='left'
-                    )
-                    self.value_texts.append(index_text)
+                    col_name = column_mapping.get(ax_name)
+                    if col_name and col_name in data.columns:
+                        value = data[col_name].iloc[index]
+                        
+                        # 添加垂直線
+                        v_line = ax.axvline(x=index, color='red', linestyle='--', alpha=0.5)
+                        self.crosshair_lines.append(v_line)
+                        
+                        # 添加高亮點
+                        point = ax.scatter(index, value, color='red', s=100, zorder=5)
+                        self.crosshair_lines.append(point)
+                        
+                        # 添加數值標籤
+                        text = ax.text(
+                            index, value,
+                            f'{value:.2f}',
+                            bbox=dict(facecolor='white', edgecolor='none', alpha=0.8),
+                            verticalalignment='bottom',
+                            horizontalalignment='right'
+                        )
+                        self.value_texts.append(text)
+                        
+                        # 添加索引標籤
+                        index_text = ax.text(
+                            0.02, 0.95,
+                            f'重設後索引: {index}',
+                            transform=ax.transAxes,
+                            bbox=dict(facecolor='white', edgecolor='none', alpha=0.8),
+                            verticalalignment='top',
+                            horizontalalignment='left'
+                        )
+                        self.value_texts.append(index_text)
             
             # 更新圖表
             self.figure.canvas.draw_idle()
             
         except Exception as e:
-            print(f"更新圖表時出錯: {str(e)}")
+            print(f"更新主圖表時出錯: {str(e)}")
+            import traceback
+            traceback.print_exc()
+
+    def _update_all_plots_with_reset_index(self, index):
+        """使用重設後的索引更新所有圖表"""
+        try:
+            # 清除所有舊的標記
+            self._clear_all_highlights()
+            
+            if hasattr(self, 'combined_track_data'):
+                data = self.combined_track_data
+                
+                # 更新主圖表
+                self._update_main_plots_with_reset_index(index)
+                
+                # 更新軌跡圖
+                if 'position' in self.axes:
+                    x_col = 'X' if 'X' in data.columns else 'Longitude'
+                    y_col = 'Y' if 'Y' in data.columns else 'Latitude'
+                    
+                    x = data[x_col].iloc[index]
+                    y = data[y_col].iloc[index]
+                    
+                    point = self.axes['position'].scatter(x, y, color='red', s=100, zorder=5)
+                    self.crosshair_lines.append(point)
+                    
+                    # 添加座標文字標籤
+                    text = self.axes['position'].text(
+                        x, y,
+                        f'經度: {x:.6f}\n緯度: {y:.6f}',
+                        bbox=dict(facecolor='white', edgecolor='none', alpha=0.8),
+                        verticalalignment='bottom',
+                        horizontalalignment='right'
+                    )
+                    self.value_texts.append(text)
+            
+            # 更新圖表
+            self.figure.canvas.draw_idle()
+            
+        except Exception as e:
+            print(f"更新所有圖表時出錯: {str(e)}")
             import traceback
             traceback.print_exc()
 
@@ -991,47 +990,94 @@ class PlotManager:
             import traceback
             traceback.print_exc()
 
-    def find_nearest_point(self, x, y):
-        """找到最近的數據點"""
-        if not self.data_list:
-            return None
+    def find_nearest_point(self, x_click, y_click):
+        """找到最接近點擊位置的數據點索引"""
+        try:
+            # 檢查是否有範圍數據
+            if hasattr(self, 'combined_track_data'):
+                data = self.combined_track_data
+            elif self.data_list:
+                data = self.data_list[0]
+            else:
+                return None
             
-        data = self.data_list[0]
-        if 'X' in data.columns and 'Y' in data.columns:
-            distances = ((data['X'] - x) ** 2 + (data['Y'] - y) ** 2) ** 0.5
-            x_col, y_col = 'X', 'Y'
-        elif 'Longitude' in data.columns and 'Latitude' in data.columns:
-            distances = ((data['Longitude'] - x) ** 2 + (data['Latitude'] - y) ** 2) ** 0.5
-            x_col, y_col = 'Longitude', 'Latitude'
-        else:
-            return None
+            x_col = 'X' if 'X' in data.columns else 'Longitude'
+            y_col = 'Y' if 'Y' in data.columns else 'Latitude'
             
-        return distances.argmin()
+            # 計算點擊位置到所有點的距離
+            distances = np.sqrt(
+                (data[x_col] - x_click) ** 2 + 
+                (data[y_col] - y_click) ** 2
+            )
+            
+            # 找到最小距離的索引
+            nearest_idx = distances.idxmin()
+            
+            # 如果使用的是重設索引的數據，需要使用原始索引
+            if hasattr(self, 'combined_track_data'):
+                nearest_idx = data.index[nearest_idx]
+            
+            return nearest_idx
+            
+        except Exception as e:
+            print(f"查找最近點時出錯: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return None
         
     def update_track_point(self, index, track_ax, track_canvas):
         """更新軌跡圖上的點"""
-        if not self.data_list:
-            return
+        try:
+            # 檢查是否有範圍數據
+            if hasattr(self, 'combined_track_data'):
+                data = self.combined_track_data
+                print(f"數據長度: {len(data)} 筆")
+                # 檢查索引是否超出範圍
+                if index >= len(data):
+                    print(f"索引 {index} 超出範圍數據長度 {len(data)}")
+                    return
+                    
+                # 使用重設後的索引,不需要轉換
+                print(f"使用重設後索引: {index}")
+            elif self.data_list:
+                data = self.data_list[0]
+                print(f"使用原始索引: {index}")
+            else:
+                return
+                
+            # 安全地移除舊的 track_point
+            if hasattr(self, 'track_point') and self.track_point is not None:
+                try:
+                    self.track_point.remove()
+                except ValueError:
+                    pass  # 忽略移除失敗的情況
+            self.track_point = None
             
-        data = self.data_list[0]
-        if self.track_point:
-            self.track_point.remove()
+            x_col = 'X' if 'X' in data.columns else 'Longitude'
+            y_col = 'Y' if 'Y' in data.columns else 'Latitude'
             
-        x_col = 'X' if 'X' in data.columns else 'Longitude'
-        y_col = 'Y' if 'Y' in data.columns else 'Latitude'
-        
-        self.track_point = track_ax.scatter(
-            data[x_col].iloc[index],
-            data[y_col].iloc[index],
-            color='red',
-            s=100,
-            zorder=5
-        )
-        track_canvas.draw()
-        
-        # 更新主圖表高亮
-        self.highlight_point(index)
-        
+            # 確保索引在有效範圍內
+            if 0 <= index < len(data):
+                self.track_point = track_ax.scatter(
+                    data[x_col].iloc[index],
+                    data[y_col].iloc[index],
+                    color='red',
+                    s=100,
+                    zorder=5
+                )
+                track_canvas.draw()
+                
+                # 更新主圖表高亮
+                if hasattr(self, 'combined_track_data'):
+                    self._clear_all_highlights()
+                    self._update_main_plots_with_reset_index(index)
+                else:
+                    self.highlight_point(index)
+                
+        except Exception as e:
+            print(f"更新軌跡點時出錯: {str(e)}")
+            import traceback
+            traceback.print_exc()
     def set_range_update_callback(self, callback):
         """設置範圍更新回調函數"""
         self.range_update_callback = callback
@@ -1231,12 +1277,38 @@ class PlotManager:
     def plot_selected_ranges(self, checked_items, full_data, axes, canvas, track_ax, track_canvas):
         """繪製選中範圍的圖表"""
         try:
+            # 保存當前選中的項目，供後續使用
+            self.current_checked_items = checked_items
+            
             print("\n=== 重新編排索引後的範圍詳細資料 ===")
             
-            # 清除所有圖表
+            # 追蹤目前的索引位置
+            current_index = 0
+            
+            # 打印每個選中範圍的資料
+            for item_data in checked_items:
+                description = item_data['description']
+                range_id = item_data['id']
+                
+                # 解析原始索引
+                start_idx = int(description.split(',')[0].split(':')[1])
+                end_idx = int(description.split(',')[1].split(':')[1])
+                
+                # 獲取該範圍的數據並重設索引
+                range_data = full_data.iloc[start_idx:end_idx+1].copy()
+                range_data.reset_index(drop=True, inplace=True)  # 重設索引從0開始
+                range_length = len(range_data)
+                
+                print(f"\n範圍 {range_id}:")
+                print(f"原始索引範圍: {start_idx} 到 {end_idx}")
+                print(f"重設後索引範圍: 0 到 {range_length-1}")
+                print(f"資料筆數: {range_length}")
+                
+                # 更新當前索引位置
+                current_index += range_length
+            # 原有的圖表繪製代碼保持不變
             self.figure.clear()
             
-            # 重新創建主圖表的布局
             gs = self.figure.add_gridspec(3, 1, 
                                         height_ratios=[1, 1, 1], 
                                         hspace=0)
@@ -1342,10 +1414,13 @@ class PlotManager:
             x_col = 'X' if 'X' in full_data.columns else 'Longitude'
             y_col = 'Y' if 'Y' in full_data.columns else 'Latitude'
             
+            # 創建一個新的 DataFrame 來存儲所有選中範圍的數據
+            combined_data = pd.DataFrame()
+            
             # 繪製每個選中範圍的軌跡
             for index, item_data in enumerate(checked_items):
                 description = item_data['description']
-                range_id = item_data['id']  # 獲取項目的 id
+                range_id = item_data['id']
                 indices = {}
                 for pair in description.split(','):
                     key, value = pair.split(':')
@@ -1354,9 +1429,25 @@ class PlotManager:
                 start_idx = indices['start_index']
                 end_idx = indices['end_index']
                 
-                x_data = full_data[x_col][start_idx:end_idx]
-                y_data = full_data[y_col][start_idx:end_idx]
-                track_ax.plot(x_data, y_data, label=f'範圍 {range_id}')  # 使用 range_id 替代 index
+                # 獲取該範圍的數據並重設索引
+                range_data = full_data.iloc[start_idx:end_idx+1].copy()
+                range_data.reset_index(drop=True, inplace=True)
+                
+                # 將數據添加到組合數據中
+                if combined_data.empty:
+                    combined_data = range_data
+                else:
+                    # 確保索引連續
+                    range_data.index = range_data.index + len(combined_data)
+                    combined_data = pd.concat([combined_data, range_data])
+                
+                # 使用重設後的索引繪製軌跡
+                x_data = range_data[x_col]
+                y_data = range_data[y_col]
+                track_ax.plot(x_data, y_data, label=f'範圍 {range_id}')
+            
+            # 存儲組合後的數據供後續使用
+            self.combined_track_data = combined_data
             
             # 設置軌跡圖屬性
             track_ax.set_title('位置軌跡圖')
