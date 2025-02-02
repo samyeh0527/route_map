@@ -60,6 +60,12 @@ class PlotManager:
             # 清除起點設定
             self.clear_start_point()
             
+            # 清除分段範圍相關設定
+            if hasattr(self, 'current_checked_items'):
+                self.current_checked_items = None
+            if hasattr(self, 'combined_track_data'):
+                self.combined_track_data = None
+            
             # 暫存起點資訊
             temp_start_point_data = self.start_point_data if self.has_start_point_set else None
             
