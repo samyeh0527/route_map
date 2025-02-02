@@ -429,118 +429,88 @@ class PlotManager:
                 
                 if clicked_run_info is not None:
                     relative_idx = clicked_run_info['relative_idx']
-                    print(f"\n=== 處理主圖表點擊 ===")
-                    print(f"點擊位置索引: {nearest_idx}")
-                    print(f"相對索引位置: {relative_idx}")
                     
-                    # 清除舊的數值標籤
+                    # 正確的方式清除舊的數值標籤
                     for ax in self.axes.values():
-                        for text in ax.texts[:]:
-                            if hasattr(text, 'is_value_label'):
-                                text.remove()
+                        # 找出需要移除的文字對象
+                        texts_to_remove = [text for text in ax.texts if hasattr(text, 'is_value_label')]
+                        # 逐個移除文字對象
+                        for text in texts_to_remove:
+                            text.remove()
                     
-                    # 計算每個Run的垂直位置
+                    # 其餘代碼保持不變
                     run_count = len(self.range_highlights)
-                    vertical_spacing = 0.15  # 標籤之間的垂直間距
+                    vertical_spacing = 0.15
                     
-                    # 更新所有Run的標籤文字
+                    updates = []
                     for i, (range_id, range_obj) in enumerate(self.range_highlights.items()):
-                        # 計算垂直位置，從上到下排列
                         vertical_position = 0.95 - (i * vertical_spacing)
-                        
-                        # 獲取當前Run的原始索引
                         range_info = self.range_index_mapping[range_id]
                         original_idx = range_info['original_start'] + relative_idx
                         
-                        # 確保索引不超出範圍
                         if original_idx <= range_info['original_end']:
                             for text in range_obj['labels']:
                                 if text.label_type == 'speed':
                                     value = self.data_list[0]['G Speed'].iloc[original_idx]
                                     text.set_text(f'Run {text.range_id}\n{value:.1f} km/h')
-                                    # 添加右側數值標籤
-                                    ax = self.axes['speed']
-                                    value_text = ax.text(0.48, vertical_position, 
-                                                       f'Run {range_id}: {value:.1f} km/h',
-                                                       transform=ax.transAxes,
-                                                       horizontalalignment='right',
-                                                       verticalalignment='top',
-                                                       zorder=1000,
-                                                       bbox=dict(facecolor='white', 
-                                                               alpha=0.8,
-                                                               pad=1))
-                                    value_text.is_value_label = True
+                                    updates.append((self.axes['speed'], range_id, value, vertical_position))
                                 elif text.label_type == 'r_scale1':
                                     value = self.data_list[0]['R Scale 1'].iloc[original_idx]
                                     text.set_text(f'Run {text.range_id}\n{value:.2f}')
-                                    # 添加右側數值標籤
-                                    ax = self.axes['r_scale1']
-                                    value_text = ax.text(0.48, vertical_position,
-                                                       f'Run {range_id}: {value:.2f}',
-                                                       transform=ax.transAxes,
-                                                       horizontalalignment='right',
-                                                       verticalalignment='top',
-                                                       zorder=1000,
-                                                       bbox=dict(facecolor='white', 
-                                                               alpha=0.8,
-                                                               pad=1))
-                                    value_text.is_value_label = True
+                                    updates.append((self.axes['r_scale1'], range_id, value, vertical_position))
                                 elif text.label_type == 'r_scale2':
                                     value = self.data_list[0]['R Scale 2'].iloc[original_idx]
                                     text.set_text(f'Run {text.range_id}\n{value:.2f}')
-                                    # 添加右側數值標籤
-                                    ax = self.axes['r_scale2']
-                                    value_text = ax.text(0.48, vertical_position,
-                                                       f'Run {range_id}: {value:.2f}',
-                                                       transform=ax.transAxes,
-                                                       horizontalalignment='right',
-                                                       verticalalignment='top',
-                                                       zorder=1000,
-                                                       bbox=dict(facecolor='white', 
-                                                               alpha=0.8,
-                                                               pad=1))
-                                    value_text.is_value_label = True
+                                    updates.append((self.axes['r_scale2'], range_id, value, vertical_position))
                                 text.set_y(0.85)
-                                print(f"更新 Run {text.range_id} 的 {text.label_type} 值: {value:.2f}")
-
+                    
+                    # 批量添加新的數值標籤
+                    for ax, range_id, value, vertical_position in updates:
+                        if isinstance(ax, str):
+                            ax = self.axes[ax]
+                        value_text = ax.text(0.48, vertical_position,
+                                           f'Run {range_id}: {value:.2f}' if 'Scale' in ax.get_title() else f'Run {range_id}: {value:.1f} km/h',
+                                           transform=ax.transAxes,
+                                           horizontalalignment='right',
+                                           verticalalignment='top',
+                                           zorder=float('inf'),
+                                           bbox=dict(facecolor='white',
+                                                   alpha=0.8,
+                                                   pad=1))
+                        value_text.is_value_label = True
+                    
+                    # 一次性更新所有圖表
                     self._update_all_plots_with_reset_index(nearest_idx)
                     
                     # 觸發回調
                     if self.click_callback:
                         self.click_callback(nearest_idx)
                     
-                    # 重繪圖表
+                    # 最後才重繪圖表
                     self.figure.canvas.draw()
-                    print("=== 點擊處理完成 ===\n")
-            
+                
             else:
-                # 使用原始數據
+                # 使用原始數據的處理邏輯（保持不變）
                 nearest_idx = int(round(event.xdata))
                 if 0 <= nearest_idx < len(self.data_list[0]):
                     self._update_highlights(nearest_idx)
                     
-                    # 更新所有範圍標籤的文字
                     for range_id, range_obj in self.range_highlights.items():
                         for text in range_obj['labels']:
-                            # 根據標籤類型獲取對應的數值
                             if text.label_type == 'speed':
                                 value = self.data_list[0]['G Speed'].iloc[nearest_idx]
                                 text.set_text(f'Run {text.range_id}\n{value:.1f} km/h')
-                                text.set_y(0.85)
                             elif text.label_type == 'r_scale1':
                                 value = self.data_list[0]['R Scale 1'].iloc[nearest_idx]
                                 text.set_text(f'Run {text.range_id}\n{value:.2f}')
-                                text.set_y(0.85)
                             elif text.label_type == 'r_scale2':
                                 value = self.data_list[0]['R Scale 2'].iloc[nearest_idx]
                                 text.set_text(f'Run {text.range_id}\n{value:.2f}')
-                                text.set_y(0.85)
+                            text.set_y(0.85)
                     
-                    # 觸發回調
                     if self.click_callback:
                         self.click_callback(nearest_idx)
                     
-                    # 重繪圖表
                     self.figure.canvas.draw()
             
         except Exception as e:
