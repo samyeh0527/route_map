@@ -153,7 +153,7 @@ class PlotManager:
     def _plot_data(self, ax, column_name, title):
         """繪製數據到指定的軸"""
         try:
-            # 如果沒有數據,清除標題
+            # 如果沒有數據,清除標題plot_selected_ranges
             if not self.data_list:
                 ax.set_title("")
                 return
@@ -194,7 +194,7 @@ class PlotManager:
                     
                     if len(self.data_list) > 1:
                         ax.legend(fontsize=8)
-                    
+            
         except Exception as e:
             print(f"繪製數據時出錯: {str(e)}")
             import traceback
@@ -406,60 +406,102 @@ class PlotManager:
         ax.yaxis.set_major_formatter(plt.FormatStrFormatter('%.4f'))
 
     def _on_plot_click(self, event):
-        """處理圖表點擊事件"""
         if event.inaxes is None:
             return
         
         try:
-            # 檢查是否有數據
             if not self.data_list:
                 print("警告：沒有可用的數據")
                 return
             
-            # 檢查是否有選中的範圍數據
             if hasattr(self, 'current_checked_items') and self.current_checked_items:
-                # 使用選中範圍的數據
                 nearest_idx = int(round(event.xdata))
                 
-                # 計算所有選中範圍的最大索引
-                max_index = 0
-                for item in self.current_checked_items:
-                    description = item['description']
-                    start_idx = int(description.split(',')[0].split(':')[1])
-                    end_idx = int(description.split(',')[1].split(':')[1])
-                    range_length = end_idx - start_idx + 1
-                    max_index += range_length
-                    
-                # 檢查索引是否在有效範圍內
-                if 0 <= nearest_idx < max_index:
+                # 找出點擊位置所屬的Run
+                clicked_run_info = None
+                for range_id, range_info in self.range_index_mapping.items():
+                    if range_info['start'] <= nearest_idx <= range_info['end']:
+                        clicked_run_info = {
+                            'run_id': range_id,
+                            'relative_idx': nearest_idx - range_info['start']
+                        }
+                        break
+                
+                if clicked_run_info is not None:
+                    relative_idx = clicked_run_info['relative_idx']
                     print(f"\n=== 處理主圖表點擊 ===")
                     print(f"點擊位置索引: {nearest_idx}")
+                    print(f"相對索引位置: {relative_idx}")
                     
-                    # 更新所有範圍標籤的文字
-                    for range_id, range_obj in self.range_highlights.items():
-                        for text in range_obj['labels']:
-                            # 根據標籤類型獲取對應的數值
-                            if text.label_type == 'speed':
-                                value = self.combined_track_data['G Speed'].iloc[nearest_idx]
-                                text.set_text(f'Run {text.range_id}\n{value:.1f} km/h')
+                    # 清除舊的數值標籤
+                    for ax in self.axes.values():
+                        for text in ax.texts[:]:
+                            if hasattr(text, 'is_value_label'):
+                                text.remove()
+                    
+                    # 計算每個Run的垂直位置
+                    run_count = len(self.range_highlights)
+                    vertical_spacing = 0.15  # 標籤之間的垂直間距
+                    
+                    # 更新所有Run的標籤文字
+                    for i, (range_id, range_obj) in enumerate(self.range_highlights.items()):
+                        # 計算垂直位置，從上到下排列
+                        vertical_position = 0.95 - (i * vertical_spacing)
+                        
+                        # 獲取當前Run的原始索引
+                        range_info = self.range_index_mapping[range_id]
+                        original_idx = range_info['original_start'] + relative_idx
+                        
+                        # 確保索引不超出範圍
+                        if original_idx <= range_info['original_end']:
+                            for text in range_obj['labels']:
+                                if text.label_type == 'speed':
+                                    value = self.data_list[0]['G Speed'].iloc[original_idx]
+                                    text.set_text(f'Run {text.range_id}\n{value:.1f} km/h')
+                                    # 添加右側數值標籤
+                                    ax = self.axes['speed']
+                                    value_text = ax.text(0.48, vertical_position, 
+                                                       f'Run {range_id}: {value:.1f} km/h',
+                                                       transform=ax.transAxes,
+                                                       horizontalalignment='right',
+                                                       verticalalignment='top',
+                                                       zorder=1000,
+                                                       bbox=dict(facecolor='white', 
+                                                               alpha=0.8,
+                                                               pad=1))
+                                    value_text.is_value_label = True
+                                elif text.label_type == 'r_scale1':
+                                    value = self.data_list[0]['R Scale 1'].iloc[original_idx]
+                                    text.set_text(f'Run {text.range_id}\n{value:.2f}')
+                                    # 添加右側數值標籤
+                                    ax = self.axes['r_scale1']
+                                    value_text = ax.text(0.48, vertical_position,
+                                                       f'Run {range_id}: {value:.2f}',
+                                                       transform=ax.transAxes,
+                                                       horizontalalignment='right',
+                                                       verticalalignment='top',
+                                                       zorder=1000,
+                                                       bbox=dict(facecolor='white', 
+                                                               alpha=0.8,
+                                                               pad=1))
+                                    value_text.is_value_label = True
+                                elif text.label_type == 'r_scale2':
+                                    value = self.data_list[0]['R Scale 2'].iloc[original_idx]
+                                    text.set_text(f'Run {text.range_id}\n{value:.2f}')
+                                    # 添加右側數值標籤
+                                    ax = self.axes['r_scale2']
+                                    value_text = ax.text(0.48, vertical_position,
+                                                       f'Run {range_id}: {value:.2f}',
+                                                       transform=ax.transAxes,
+                                                       horizontalalignment='right',
+                                                       verticalalignment='top',
+                                                       zorder=1000,
+                                                       bbox=dict(facecolor='white', 
+                                                               alpha=0.8,
+                                                               pad=1))
+                                    value_text.is_value_label = True
                                 text.set_y(0.85)
-                                print(f"Run {text.range_id} 的 G Speed: {value:.1f} km/h")
-                                # 更新右側圖表
-                                self._update_right_plot_value('speed', nearest_idx, value, text.range_id)
-                            elif text.label_type == 'r_scale1':
-                                value = self.combined_track_data['R Scale 1'].iloc[nearest_idx]
-                                text.set_text(f'Run {text.range_id}\n{value:.2f}')
-                                text.set_y(0.85)
-                                print(f"Run {text.range_id} 的 R Scale 1: {value:.2f}")
-                                # 更新右側圖表
-                                self._update_right_plot_value('r_scale1', nearest_idx, value, text.range_id)
-                            elif text.label_type == 'r_scale2':
-                                value = self.combined_track_data['R Scale 2'].iloc[nearest_idx]
-                                text.set_text(f'Run {text.range_id}\n{value:.2f}')
-                                text.set_y(0.85)
-                                print(f"Run {text.range_id} 的 R Scale 2: {value:.2f}")
-                                # 更新右側圖表
-                                self._update_right_plot_value('r_scale2', nearest_idx, value, text.range_id)
+                                print(f"更新 Run {text.range_id} 的 {text.label_type} 值: {value:.2f}")
 
                     self._update_all_plots_with_reset_index(nearest_idx)
                     
@@ -470,8 +512,7 @@ class PlotManager:
                     # 重繪圖表
                     self.figure.canvas.draw()
                     print("=== 點擊處理完成 ===\n")
-                else:
-                    print(f"警告：索引 {nearest_idx} 超出有效範圍 (最大值: {max_index-1})")
+            
             else:
                 # 使用原始數據
                 nearest_idx = int(round(event.xdata))
@@ -501,7 +542,7 @@ class PlotManager:
                     
                     # 重繪圖表
                     self.figure.canvas.draw()
-                    
+            
         except Exception as e:
             print(f"處理主圖表點擊回調時出錯: {str(e)}")
             import traceback
@@ -547,7 +588,7 @@ class PlotManager:
                         # 添加數值標籤
                         text = ax.text(
                             index, value,
-                            f'{value:.2f}',
+                            f'',
                             bbox=dict(facecolor='white', edgecolor='none', alpha=0.8),
                             verticalalignment='bottom',
                             horizontalalignment='right'
@@ -557,7 +598,7 @@ class PlotManager:
                         # 添加索引標籤
                         index_text = ax.text(
                             0.02, 0.95,
-                            f'重設後索引: {index}',
+                            f'',
                             transform=ax.transAxes,
                             bbox=dict(facecolor='white', edgecolor='none', alpha=0.8),
                             verticalalignment='top',
@@ -1082,7 +1123,7 @@ class PlotManager:
             if hasattr(self, 'combined_track_data'):
                 data = self.combined_track_data
                 print(f"數據長度: {len(data)} 筆")
-                print(f"current_checked_items: {self.current_checked_items}")
+                #print(f"current_checked_items: {self.current_checked_items}")
                 # 獲取第一個範圍的長度
                 first_range = self.current_checked_items[0]
                 description = first_range['description']
@@ -1295,23 +1336,19 @@ class PlotManager:
                 # 根據軸的類型設置初始標籤文字
                 if i == 0:  # speed
                     label_type = 'speed'
-                elif i == 1:  # r_scale1
-                    label_type = 'r_scale1'
-                else:  # r_scale2
-                    label_type = 'r_scale2'
-                
-                # 添加文字標籤
+                else:  # r_scale1 和 r_scale2
+                    label_type = 'r_scale1' if i == 1 else 'r_scale2'
                 text = ax.text(x_pos, y_pos, 
-                             f'Run {range_id}',  # 初始只顯示Run編號
-                             horizontalalignment='right',  # 改為右對齊
-                             verticalalignment='top',
-                             transform=ax.get_xaxis_transform(),  # 使用x軸變換
-                             bbox=dict(facecolor='white',
-                                     edgecolor=color,
-                                     alpha=0.8,
-                                     boxstyle='round,pad=0.5'),
-                             fontsize=9,
-                             zorder=5)  # 確保文字在最上層
+                                f'Run {range_id}',
+                                horizontalalignment='right',
+                                verticalalignment='top',
+                                transform=ax.get_xaxis_transform(),
+                                bbox=dict(facecolor='white',
+                                        edgecolor=color,
+                                        alpha=0.8,
+                                        boxstyle='round,pad=0.5'),
+                                fontsize=9,
+                                zorder=5)
                 
                 # 為文字對象添加屬性以便後續更新
                 text.range_id = range_id
@@ -1350,30 +1387,42 @@ class PlotManager:
             
             print("\n=== 重新編排索引後的Run詳細資料 ===")
             
-            # 追蹤目前的索引位置
+            # 創建一個字典來存儲每個Run的索引映射
+            self.range_index_mapping = {}
             current_index = 0
             
-            # 打印每個選中Run的資料
+            # 為每個Run創建索引映射
             for item_data in checked_items:
                 description = item_data['description']
                 range_id = item_data['id']
-                
-                # 解析原始索引
                 start_idx = int(description.split(',')[0].split(':')[1])
                 end_idx = int(description.split(',')[1].split(':')[1])
+                range_length = end_idx - start_idx + 1
                 
-                # 獲取該Run的數據並重設索引
-                range_data = full_data.iloc[start_idx:end_idx+1].copy()
-                range_data.reset_index(drop=True, inplace=True)  # 重設索引從0開始
-                range_length = len(range_data)
+                # 存儲該Run的索引範圍
+                self.range_index_mapping[range_id] = {
+                    'start': current_index,
+                    'end': current_index + range_length - 1,
+                    'original_start': start_idx,
+                    'original_end': end_idx
+                }
                 
                 print(f"\nRun {range_id}:")
                 print(f"原始索引範圍: {start_idx} 到 {end_idx}")
-                print(f"重設後索引範圍: 0 到 {range_length-1}")
+                print(f"重設後索引範圍: {current_index} 到 {current_index + range_length - 1}")
                 print(f"資料筆數: {range_length}")
                 
-                # 更新當前索引位置
                 current_index += range_length
+
+            # 創建組合數據
+            self.combined_track_data = pd.DataFrame()
+            for item_data in checked_items:
+                range_id = item_data['id']
+                start_idx = int(item_data['description'].split(',')[0].split(':')[1])
+                end_idx = int(item_data['description'].split(',')[1].split(':')[1])
+                range_data = full_data.iloc[start_idx:end_idx+1].copy()
+                self.combined_track_data = pd.concat([self.combined_track_data, range_data], ignore_index=True)
+
             # 原有的圖表繪製代碼保持不變
             self.figure.clear()
             
@@ -1447,7 +1496,13 @@ class PlotManager:
                                         transform=selected_ax.transAxes,
                                         horizontalalignment='right',
                                         verticalalignment='top',
-                                        bbox=dict(facecolor='white', alpha=0.8)
+                                        bbox=dict(
+                                            facecolor='white', 
+                                            alpha=0.8,
+                                            edgecolor='none',  # 移除邊框
+                                            boxstyle='round,pad=0.5'  # 添加圓角
+                                        ),
+                                        zorder=float('inf')  # 使用無限大的 zorder 確保始終在最上層
                                     )
                                     canvas.draw()
                         
