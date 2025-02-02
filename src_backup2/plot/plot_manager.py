@@ -1243,15 +1243,15 @@ class PlotManager:
                                      zorder=1)  # 確保高亮在數據線後面
                 highlights.append(highlight)
                 
-                # 添加範圍標籤
-                # 計算文字位置（在範圍的中間位置）
-                x_pos = start_index + (end_index - start_index) / 2
+                # 修改: 統一將範圍標籤放在右側
+                # 計算文字位置（在範圍的右側）
+                x_pos = end_index  # 改為使用範圍的結束位置
                 y_pos = 0.95  # 在軸的頂部位置
                 
                 # 添加文字標籤
                 text = ax.text(x_pos, y_pos, 
                              f'範圍 {range_id}',
-                             horizontalalignment='center',
+                             horizontalalignment='right',  # 改為右對齊
                              verticalalignment='top',
                              transform=ax.get_xaxis_transform(),  # 使用x軸變換
                              bbox=dict(facecolor='white',
