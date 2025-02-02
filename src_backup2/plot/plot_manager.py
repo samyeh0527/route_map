@@ -434,11 +434,41 @@ class PlotManager:
                 if 0 <= nearest_idx < max_index:
                     print(f"\n=== 處理主圖表點擊 ===")
                     print(f"點擊位置索引: {nearest_idx}")
+                    
+                    # 更新所有範圍標籤的文字
+                    for range_id, range_obj in self.range_highlights.items():
+                        for text in range_obj['labels']:
+                            # 根據標籤類型獲取對應的數值
+                            if text.label_type == 'speed':
+                                value = self.combined_track_data['G Speed'].iloc[nearest_idx]
+                                text.set_text(f'Run {text.range_id}\n{value:.1f} km/h')
+                                text.set_y(0.85)
+                                print(f"Run {text.range_id} 的 G Speed: {value:.1f} km/h")
+                                # 更新右側圖表
+                                self._update_right_plot_value('speed', nearest_idx, value, text.range_id)
+                            elif text.label_type == 'r_scale1':
+                                value = self.combined_track_data['R Scale 1'].iloc[nearest_idx]
+                                text.set_text(f'Run {text.range_id}\n{value:.2f}')
+                                text.set_y(0.85)
+                                print(f"Run {text.range_id} 的 R Scale 1: {value:.2f}")
+                                # 更新右側圖表
+                                self._update_right_plot_value('r_scale1', nearest_idx, value, text.range_id)
+                            elif text.label_type == 'r_scale2':
+                                value = self.combined_track_data['R Scale 2'].iloc[nearest_idx]
+                                text.set_text(f'Run {text.range_id}\n{value:.2f}')
+                                text.set_y(0.85)
+                                print(f"Run {text.range_id} 的 R Scale 2: {value:.2f}")
+                                # 更新右側圖表
+                                self._update_right_plot_value('r_scale2', nearest_idx, value, text.range_id)
+
                     self._update_all_plots_with_reset_index(nearest_idx)
                     
                     # 觸發回調
                     if self.click_callback:
                         self.click_callback(nearest_idx)
+                    
+                    # 重繪圖表
+                    self.figure.canvas.draw()
                     print("=== 點擊處理完成 ===\n")
                 else:
                     print(f"警告：索引 {nearest_idx} 超出有效範圍 (最大值: {max_index-1})")
@@ -446,19 +476,34 @@ class PlotManager:
                 # 使用原始數據
                 nearest_idx = int(round(event.xdata))
                 if 0 <= nearest_idx < len(self.data_list[0]):
-                    print(f"\n=== 處理主圖表點擊 ===")
-                    print(f"點擊位置索引: {nearest_idx}")
-                    self.highlight_point(nearest_idx)
+                    self._update_highlights(nearest_idx)
+                    
+                    # 更新所有範圍標籤的文字
+                    for range_id, range_obj in self.range_highlights.items():
+                        for text in range_obj['labels']:
+                            # 根據標籤類型獲取對應的數值
+                            if text.label_type == 'speed':
+                                value = self.data_list[0]['G Speed'].iloc[nearest_idx]
+                                text.set_text(f'Run {text.range_id}\n{value:.1f} km/h')
+                                text.set_y(0.85)
+                            elif text.label_type == 'r_scale1':
+                                value = self.data_list[0]['R Scale 1'].iloc[nearest_idx]
+                                text.set_text(f'Run {text.range_id}\n{value:.2f}')
+                                text.set_y(0.85)
+                            elif text.label_type == 'r_scale2':
+                                value = self.data_list[0]['R Scale 2'].iloc[nearest_idx]
+                                text.set_text(f'Run {text.range_id}\n{value:.2f}')
+                                text.set_y(0.85)
                     
                     # 觸發回調
                     if self.click_callback:
                         self.click_callback(nearest_idx)
-                    print("=== 點擊處理完成 ===\n")
-                else:
-                    print(f"警告：索引 {nearest_idx} 超出有效範圍 (最大值: {len(self.data_list[0])-1})")
-        
+                    
+                    # 重繪圖表
+                    self.figure.canvas.draw()
+                    
         except Exception as e:
-            print(f"處理圖表點擊事件時出錯: {str(e)}")
+            print(f"處理主圖表點擊回調時出錯: {str(e)}")
             import traceback
             traceback.print_exc()
 
@@ -1224,18 +1269,18 @@ class PlotManager:
             print(f"清除所有標記時出錯: {str(e)}")
 
     def highlight_range(self, start_index, end_index, range_id):
-        """在主圖表上高亮顯示指定範圍"""
+        """在主圖表上高亮顯示指定Run"""
         try:
-            # 為每個子圖添加範圍標示
+            # 為每個子圖添加Run標示
             highlights = []
             text_labels = []  # 新增：存儲文字標籤
-            colors = ['#FFD700', '#98FB98', '#87CEFA', '#DDA0DD', '#F08080']  # 不同範圍使用不同顏色
+            colors = ['#FFD700', '#98FB98', '#87CEFA', '#DDA0DD', '#F08080']  # 不同Run使用不同顏色
             color = colors[range_id % len(colors)]  # 循環使用顏色
             
             # 獲取圖表中的所有子圖
             axes = self.figure.get_axes()
             
-            for ax in axes:
+            for i, ax in enumerate(axes):
                 # 添加高亮區域
                 highlight = ax.axvspan(start_index, end_index, 
                                      alpha=0.2, 
@@ -1243,14 +1288,21 @@ class PlotManager:
                                      zorder=1)  # 確保高亮在數據線後面
                 highlights.append(highlight)
                 
-                # 修改: 統一將範圍標籤放在右側
-                # 計算文字位置（在範圍的右側）
-                x_pos = end_index  # 改為使用範圍的結束位置
-                y_pos = 0.95  # 在軸的頂部位置
+                # 修改: 統一將Run標籤放在右側
+                x_pos = end_index  # 改為使用Run的結束位置
+                y_pos = 0.85  # 在軸的頂部位置
+                
+                # 根據軸的類型設置初始標籤文字
+                if i == 0:  # speed
+                    label_type = 'speed'
+                elif i == 1:  # r_scale1
+                    label_type = 'r_scale1'
+                else:  # r_scale2
+                    label_type = 'r_scale2'
                 
                 # 添加文字標籤
                 text = ax.text(x_pos, y_pos, 
-                             f'範圍 {range_id}',
+                             f'Run {range_id}',  # 初始只顯示Run編號
                              horizontalalignment='right',  # 改為右對齊
                              verticalalignment='top',
                              transform=ax.get_xaxis_transform(),  # 使用x軸變換
@@ -1260,6 +1312,10 @@ class PlotManager:
                                      boxstyle='round,pad=0.5'),
                              fontsize=9,
                              zorder=5)  # 確保文字在最上層
+                
+                # 為文字對象添加屬性以便後續更新
+                text.range_id = range_id
+                text.label_type = label_type
                 text_labels.append(text)
             
             # 存儲高亮對象和文字標籤以便後續移除
@@ -1269,10 +1325,10 @@ class PlotManager:
             }
             
         except Exception as e:
-            print(f"添加範圍高亮時出錯: {str(e)}")
+            print(f"添加Run高亮時出錯: {str(e)}")
     
     def remove_range_highlight(self, range_id):
-        """移除指定範圍的高亮顯示"""
+        """移除指定Run的高亮顯示"""
         try:
             if range_id in self.range_highlights:
                 # 移除所有子圖中的高亮
@@ -1284,20 +1340,20 @@ class PlotManager:
                 del self.range_highlights[range_id]
                 
         except Exception as e:
-            print(f"移除範圍高亮時出錯: {str(e)}")
+            print(f"移除Run高亮時出錯: {str(e)}")
 
     def plot_selected_ranges(self, checked_items, full_data, axes, canvas, track_ax, track_canvas):
-        """繪製選中範圍的圖表"""
+        """繪製選中Run的圖表"""
         try:
             # 保存當前選中的項目，供後續使用
             self.current_checked_items = checked_items
             
-            print("\n=== 重新編排索引後的範圍詳細資料 ===")
+            print("\n=== 重新編排索引後的Run詳細資料 ===")
             
             # 追蹤目前的索引位置
             current_index = 0
             
-            # 打印每個選中範圍的資料
+            # 打印每個選中Run的資料
             for item_data in checked_items:
                 description = item_data['description']
                 range_id = item_data['id']
@@ -1306,12 +1362,12 @@ class PlotManager:
                 start_idx = int(description.split(',')[0].split(':')[1])
                 end_idx = int(description.split(',')[1].split(':')[1])
                 
-                # 獲取該範圍的數據並重設索引
+                # 獲取該Run的數據並重設索引
                 range_data = full_data.iloc[start_idx:end_idx+1].copy()
                 range_data.reset_index(drop=True, inplace=True)  # 重設索引從0開始
                 range_length = len(range_data)
                 
-                print(f"\n範圍 {range_id}:")
+                print(f"\nRun {range_id}:")
                 print(f"原始索引範圍: {start_idx} 到 {end_idx}")
                 print(f"重設後索引範圍: 0 到 {range_length-1}")
                 print(f"資料筆數: {range_length}")
@@ -1354,23 +1410,49 @@ class PlotManager:
                         
                         # 獲取該範圍的數據並重設索引
                         range_data = full_data.iloc[start_idx:end_idx+1].copy()
-                        range_data.reset_index(drop=True, inplace=True)  # 重設索引從0開始
+                        range_data.reset_index(drop=True, inplace=True)
                         
                         # 在主圖表上繪製（使用重設後的索引）
                         ax.plot(range_data.index, 
                                range_data[col_name], 
                                '-', 
                                linewidth=1, 
-                               label=f'範圍 {range_id}')
+                               label=f'Run {range_id}')
                         
                         # 在選中範圍的圖表上繪製（使用相同的重設索引）
-                        axes[list(plot_config.keys()).index(ax_name)].plot(
+                        selected_ax = axes[list(plot_config.keys()).index(ax_name)]
+                        line = selected_ax.plot(
                             range_data.index,
                             range_data[col_name],
                             '-',
                             linewidth=1,
-                            label=f'範圍 {range_id}'
-                        )
+                            label=f'Run {range_id}'
+                        )[0]
+                        
+                        # 為右側圖表添加點擊事件處理
+                        def on_selected_plot_click(event):
+                            if event.inaxes:
+                                nearest_idx = int(round(event.xdata))
+                                if 0 <= nearest_idx < len(range_data):
+                                    value = range_data[col_name].iloc[nearest_idx]
+                                    # 更新標籤文字
+                                    if col_name == 'G Speed':
+                                        text = f'Run {range_id}\n{value:.1f} km/h'
+                                    else:
+                                        text = f'Run {range_id}\n{value:.2f}'
+                                    # 添加或更新標籤
+                                    selected_ax.texts.clear()  # 清除舊的標籤
+                                    selected_ax.text(
+                                        0.98, 0.85, text,
+                                        transform=selected_ax.transAxes,
+                                        horizontalalignment='right',
+                                        verticalalignment='top',
+                                        bbox=dict(facecolor='white', alpha=0.8)
+                                    )
+                                    canvas.draw()
+                        
+                        # 綁定點擊事件
+                        canvas.mpl_connect('button_press_event', on_selected_plot_click)
                     
                     # 設置主圖表屬性
                     ax.set_title(col_name, 
@@ -1408,11 +1490,11 @@ class PlotManager:
             # 繪製軌跡圖
             self.plot_track_for_ranges(checked_items, full_data, track_ax, track_canvas)
             
-            print("\n=== 範圍資料輸出完成 ===")
+            print("\n=== Run資料輸出完成 ===")
             return True
             
         except Exception as e:
-            print(f"繪製選中範圍時出錯: {str(e)}")
+            print(f"繪製選中Run時出錯: {str(e)}")
             import traceback
             traceback.print_exc()
             return False
@@ -1426,13 +1508,13 @@ class PlotManager:
             x_col = 'X' if 'X' in full_data.columns else 'Longitude'
             y_col = 'Y' if 'Y' in full_data.columns else 'Latitude'
             
-            # 創建一個新的 DataFrame 來存儲第一個選中範圍的數據
+            # 創建一個新的 DataFrame 來存儲第一個選中Run的數據
             combined_data = pd.DataFrame()
             
-            # 反轉列表順序，使第一個選中的範圍顯示在最上層
+            # 反轉列表順序，使第一個選中的Run顯示在最上層
             reversed_items = list(reversed(checked_items))
             
-            # 繪製每個選中範圍的軌跡
+            # 繪製每個選中Run的軌跡
             for index, item_data in enumerate(reversed_items):
                 description = item_data['description']
                 range_id = item_data['id']
@@ -1444,22 +1526,22 @@ class PlotManager:
                 start_idx = indices['start_index']
                 end_idx = indices['end_index']
                 
-                # 獲取該範圍的數據並重設索引
+                # 獲取該Run的數據並重設索引
                 range_data = full_data.iloc[start_idx:end_idx+1].copy()
                 range_data.reset_index(drop=True, inplace=True)
                 
-                # 只保存第一個選中範圍的數據用於索引
-                if index == len(reversed_items) - 1:  # 第一個選中的範圍
+                # 只保存第一個選中Run的數據用於索引
+                if index == len(reversed_items) - 1:  # 第一個選中的Run
                     combined_data = range_data
                 
                 # 使用重設後的索引繪製軌跡
                 x_data = range_data[x_col]
                 y_data = range_data[y_col]
-                # 設置zorder，確保第一個選中的範圍在最上層
+                # 設置zorder，確保第一個選中的Run在最上層
                 zorder = index + 1
-                track_ax.plot(x_data, y_data, label=f'範圍 {range_id}', zorder=zorder)
+                track_ax.plot(x_data, y_data, label=f'Run {range_id}', zorder=zorder)
             
-            # 存儲第一個選中範圍的數據供後續使用
+            # 存儲第一個選中Run的數據供後續使用
             self.combined_track_data = combined_data
             
             # 設置軌跡圖屬性
@@ -1473,5 +1555,39 @@ class PlotManager:
             
         except Exception as e:
             print(f"繪製軌跡圖時出錯: {str(e)}")
+            import traceback
+            traceback.print_exc()
+
+    def _update_right_plot_value(self, plot_type, index, value, range_id):
+        """更新主圖表上的Run標籤數值"""
+        try:
+            # 根據plot_type獲取對應的軸
+            ax_mapping = {
+                'speed': 'speed',
+                'r_scale1': 'r_scale1',
+                'r_scale2': 'r_scale2'
+            }
+            ax_name = ax_mapping.get(plot_type)
+            if ax_name not in self.axes:
+                print(f"警告：找不到圖表軸 {ax_name}")
+                return
+                
+            ax = self.axes[ax_name]
+            
+            # 尋找並更新Run標籤
+            for text in ax.texts:
+                if hasattr(text, 'range_id') and text.range_id == range_id:
+                    # 根據數據類型設置不同的格式
+                    if plot_type == 'speed':
+                        text.set_text(f'Run {range_id}\n{value:.1f} km/h')
+                    else:
+                        text.set_text(f'Run {range_id}\n{value:.2f}')
+                    break
+            
+            # 重繪圖表
+            self.figure.canvas.draw_idle()
+            
+        except Exception as e:
+            print(f"更新圖表數值時出錯: {str(e)}")
             import traceback
             traceback.print_exc()
