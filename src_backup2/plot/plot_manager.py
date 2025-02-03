@@ -477,10 +477,10 @@ class PlotManager:
                         if isinstance(ax, str):
                             ax = self.axes[ax]
                         # 修改字體大小為7，並調整文字框的padding和間距
-                        value_text = ax.text(0, vertical_position,
+                        value_text = ax.text(0.98, vertical_position,
                                            f'Run {range_id}: {value:.2f}',
                                            transform=ax.transAxes,
-                                           horizontalalignment='left',
+                                           horizontalalignment='right',
                                            verticalalignment='top',
                                            fontsize=7,  # 縮小字體
                                            zorder=float('inf'),
@@ -1491,7 +1491,7 @@ class PlotManager:
                         print(f"[plot_selected_ranges] 添加選中範圍的線，label_name: {label_name}")
                     # 設置主圖表屬性
                     ax.set_title(col_name, 
-                               fontsize=10,
+                               fontsize=7,
                                fontfamily='sans-serif',
                                loc='left',
                                pad=10,
@@ -1509,7 +1509,7 @@ class PlotManager:
                     
                     # 設置選中範圍圖表的屬性
                     selected_ax = axes[list(plot_config.keys()).index(ax_name)]
-                    selected_ax.set_title(col_name, fontsize=10)
+                    selected_ax.set_title(col_name, fontsize=10, loc='left', y=0.9, x=0.0, pad=10)
                     selected_ax.grid(True)
                     selected_ax.set_xlabel('索引')
                     selected_ax.set_ylabel(col_name)
