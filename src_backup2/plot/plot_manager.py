@@ -87,8 +87,8 @@ class PlotManager:
             
             # 修改為3行1列的布局，只包含速度和R Scale圖表
             gs = self.figure.add_gridspec(3, 1, 
-                                        height_ratios=[1, 1, 1], 
-                                        hspace=0)  # 將整體間距設為0，後續手動調整
+                                        height_ratios=[1, 1, 1],  # 將整體間距設為0，後續手動調整
+                                        hspace=0)
             
             # 調整圖表順序，將速度圖放在最上方
             self.axes = {
@@ -392,10 +392,10 @@ class PlotManager:
         
         # 為X軸標籤預留足夠空間
         self.figure.subplots_adjust(bottom=0.15, right=0.95, top=0.95)
-
+        
     def _setup_position_axes(self, ax):
         """設置位置軌跡圖的軸"""
-        ax.set_title('位置軌跡', fontsize=10)
+        ax.set_title('位置軌跡', fontsize=8)
         ax.set_xlabel('經度', fontsize=9)
         ax.set_ylabel('緯度', fontsize=9)
         ax.grid(True)
@@ -1493,7 +1493,7 @@ class PlotManager:
                     ax.set_title(col_name, 
                                fontsize=7,
                                fontfamily='sans-serif',
-                               loc='left',
+                               loc='left',  # 確保標題靠左
                                pad=10,
                                bbox=dict(
                                    facecolor='black',
@@ -1505,16 +1505,19 @@ class PlotManager:
                     ax.grid(True, alpha=0.3)
                     ax.tick_params(axis='both', labelsize=8)
                     if len(checked_items) > 1:
-                        ax.legend(fontsize=8)
+                        ax.legend(fontsize=8, loc='upper left')  # 將圖例設置在左上角
                     
                     # 設置選中範圍圖表的屬性
                     selected_ax = axes[list(plot_config.keys()).index(ax_name)]
-                    selected_ax.set_title(col_name, fontsize=10, loc='left', y=0.9, x=0.0, pad=10)
+                    selected_ax.set_title(col_name, 
+                                        fontsize=10, 
+                                        loc='left',  # 確保標題靠左
+                                        pad=10)
                     selected_ax.grid(True)
                     selected_ax.set_xlabel('索引')
                     selected_ax.set_ylabel(col_name)
                     if len(checked_items) > 1:
-                        selected_ax.legend()
+                        selected_ax.legend(loc='upper left')  # 將圖例設置在左上角
             
             # 調整布局並更新圖表
             self.figure.tight_layout()
