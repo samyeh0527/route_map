@@ -849,7 +849,7 @@ class MapViewer(QMainWindow):
         self.check_list.clear()
         for range_info in ranges:
             # 創建列表項，格式：範圍1, 時間 00:00:00
-            item_text = f"範圍{range_info['range_number']}, 時間 {range_info['duration_str']}"
+            item_text = f"Run{range_info['range_number']}, 時間 {range_info['duration_str']}"
             item = QListWidgetItem(item_text)
             item.setData(Qt.UserRole, {"id": range_info['range_number'], "description": f"start_index:{range_info['start_index']},end_index:{range_info['end_index']}"})
             item.setFlags(item.flags() | Qt.ItemIsUserCheckable)

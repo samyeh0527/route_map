@@ -450,17 +450,25 @@ class PlotManager:
                         
                         if original_idx <= range_info['original_end']:
                             for text in range_obj['labels']:
+                                # 找到對應的 item_data 以獲取自定義標籤
+                                item_data = next((item for item in self.current_checked_items 
+                                                if item['id'] == range_id), None)
+                                label_name = item_data.get('label', f'Run {range_id}') if item_data else f'Run {range_id}'
+                                
                                 if text.label_type == 'speed':
                                     value = self.data_list[0]['G Speed'].iloc[original_idx]
-                                    text.set_text(f'Run {text.range_id}\n{value:.1f} km/h')
+                                    text.set_text(f'{label_name}\n{value:.1f} km/h')
+                                    print(f"[_on_plot_click] 更新速度標籤，value: {value}")
                                     updates.append((self.axes['speed'], range_id, value, vertical_position))
                                 elif text.label_type == 'r_scale1':
                                     value = self.data_list[0]['R Scale 1'].iloc[original_idx]
-                                    text.set_text(f'Run {text.range_id}\n{value:.2f}')
+                                    text.set_text(f'{label_name}\n{value:.2f}')
+                                    print(f"[_on_plot_click] 更新R Scale 1標籤，value: {value}")
                                     updates.append((self.axes['r_scale1'], range_id, value, vertical_position))
                                 elif text.label_type == 'r_scale2':
                                     value = self.data_list[0]['R Scale 2'].iloc[original_idx]
-                                    text.set_text(f'Run {text.range_id}\n{value:.2f}')
+                                    text.set_text(f'{label_name}\n{value:.2f}')
+                                    print(f"[_on_plot_click] 更新R Scale 2標籤，value: {value}")
                                     updates.append((self.axes['r_scale2'], range_id, value, vertical_position))
                                 text.set_y(0.85)
                     
@@ -468,17 +476,17 @@ class PlotManager:
                     for ax, range_id, value, vertical_position in updates:
                         if isinstance(ax, str):
                             ax = self.axes[ax]
-                        value_text = ax.text(0.48, vertical_position,
+                        value_text = ax.text(0.01, vertical_position,
                                            f'Run {range_id}: {value:.2f}' ,
                                            transform=ax.transAxes,
-                                           horizontalalignment='right',
+                                           horizontalalignment='left',
                                            verticalalignment='top',
                                            zorder=float('inf'),
                                            bbox=dict(facecolor='white',
                                                    alpha=0.8,
                                                    pad=1))
                         value_text.is_value_label = True
-                        # print(f"ax: {ax}")
+
                     # 一次性更新所有圖表
                     self._update_all_plots_with_reset_index(nearest_idx)
                     
@@ -1282,50 +1290,58 @@ class PlotManager:
     def highlight_range(self, start_index, end_index, range_id):
         """在主圖表上高亮顯示指定Run"""
         try:
-            # 為每個子圖添加Run標示
-            highlights = []
-            text_labels = []  # 新增：存儲文字標籤
-            colors = ['#FFD700', '#98FB98', '#87CEFA', '#DDA0DD', '#F08080']  # 不同Run使用不同顏色
-            color = colors[range_id % len(colors)]  # 循環使用顏色
+            # 檢查是否有 current_checked_items
+            if hasattr(self, 'current_checked_items'):
+                item_data = next((item for item in self.current_checked_items 
+                                if item['id'] == range_id), None)
+                label_name = item_data.get('label', '') if item_data else ''
+                print(f"[highlight_range] 找到對應的 item_data: {item_data}")
+                print(f"[highlight_range] label_name: {label_name}")
+            else:
+                label_name = ''
+                print(f"[highlight_range] 警告：找不到 current_checked_items")
+                print(f"[highlight_range] 使用空白 label_name: {label_name}")
             
-            # 獲取圖表中的所有子圖
+            # 原有的代碼...
+            highlights = []
+            text_labels = []
+            colors = ['#FFD700', '#98FB98', '#87CEFA', '#DDA0DD', '#F08080']
+            color = colors[range_id % len(colors)]
+            
             axes = self.figure.get_axes()
             
             for i, ax in enumerate(axes):
-                # 添加高亮區域
                 highlight = ax.axvspan(start_index, end_index, 
                                      alpha=0.2, 
                                      color=color,
-                                     zorder=1)  # 確保高亮在數據線後面
+                                     zorder=1)
                 highlights.append(highlight)
                 
-                # 修改: 統一將Run標籤放在右側
-                x_pos = end_index  # 改為使用Run的結束位置
-                y_pos = 0.85  # 在軸的頂部位置
+                x_pos = end_index
+                y_pos = 0.85
                 
-                # 根據軸的類型設置初始標籤文字
-                if i == 0:  # speed
+                if i == 0:
                     label_type = 'speed'
-                else:  # r_scale1 和 r_scale2
+                else:
                     label_type = 'r_scale1' if i == 1 else 'r_scale2'
+
+                print(f"[highlight_range] 添加標籤，軸 {i}，使用 label_name: {label_name}")
                 text = ax.text(x_pos, y_pos, 
-                                f'Run {range_id}',
-                                horizontalalignment='right',
-                                verticalalignment='top',
-                                transform=ax.get_xaxis_transform(),
-                                bbox=dict(facecolor='white',
-                                        edgecolor=color,
-                                        alpha=0.8,
-                                        boxstyle='round,pad=0.5'),
-                                fontsize=9,
-                                zorder=5)
+                              label_name,  # 直接使用 label_name
+                              horizontalalignment='right',
+                              verticalalignment='top',
+                              transform=ax.get_xaxis_transform(),
+                              bbox=dict(facecolor='white',
+                                      edgecolor=color,
+                                      alpha=0.8,
+                                      boxstyle='round,pad=0.5'),
+                              fontsize=9,
+                              zorder=5)
                 
-                # 為文字對象添加屬性以便後續更新
                 text.range_id = range_id
                 text.label_type = label_type
                 text_labels.append(text)
             
-            # 存儲高亮對象和文字標籤以便後續移除
             self.range_highlights[range_id] = {
                 'highlights': highlights,
                 'labels': text_labels
@@ -1352,8 +1368,8 @@ class PlotManager:
     def plot_selected_ranges(self, checked_items, full_data, axes, canvas, track_ax, track_canvas):
         """繪製選中Run的圖表"""
         try:
-            # 保存當前選中的項目，供後續使用
             self.current_checked_items = checked_items
+            print(f"[plot_selected_ranges] current_checked_items: {self.current_checked_items}")
             
             print("\n=== 重新編排索引後的Run詳細資料 ===")
             
@@ -1421,8 +1437,12 @@ class PlotManager:
             for ax_name, (col_name, ax) in plot_config.items():
                 if col_name in full_data.columns:
                     for item_data in checked_items:
+                        label_name = item_data.get('label', '')
+                        print(f"[plot_selected_ranges] 處理項目，label_name: {label_name}")
                         description = item_data['description']
                         range_id = item_data['id']
+                        # 獲取標籤名稱，如果沒有則使用預設的 Run {range_id}
+                        label_name = item_data.get('label', f'Run {range_id}')
                         
                         start_idx = int(description.split(',')[0].split(':')[1])
                         end_idx = int(description.split(',')[1].split(':')[1])
@@ -1431,54 +1451,23 @@ class PlotManager:
                         range_data = full_data.iloc[start_idx:end_idx+1].copy()
                         range_data.reset_index(drop=True, inplace=True)
                         
-                        # 在主圖表上繪製（使用重設後的索引）
+                        # 在主圖表上繪製（使用重設後的索引和自定義標籤）
                         ax.plot(range_data.index, 
                                range_data[col_name], 
                                '-', 
                                linewidth=1, 
-                               label=f'Run {range_id}')
+                               label=label_name)
                         
-                        # 在選中範圍的圖表上繪製（使用相同的重設索引）
+                        # 在選中範圍的圖表上繪製（使用相同的重設索引和自定義標籤）
                         selected_ax = axes[list(plot_config.keys()).index(ax_name)]
                         line = selected_ax.plot(
                             range_data.index,
                             range_data[col_name],
                             '-',
                             linewidth=1,
-                            label=f'Run {range_id}'
+                            label=label_name
                         )[0]
-                        
-                        # 為右側圖表添加點擊事件處理
-                        # def on_selected_plot_click(event):
-                        #     if event.inaxes:
-                        #         nearest_idx = int(round(event.xdata))
-                        #         if 0 <= nearest_idx < len(range_data):
-                        #             value = range_data[col_name].iloc[nearest_idx]
-                        #             # 更新標籤文字
-                        #             if col_name == 'G Speed':
-                        #                 text = f'Run {range_id}\n{value:.1f} km/h'
-                        #             else:
-                        #                 text = f'Run {range_id}\n{value:.2f}'
-                        #             # 添加或更新標籤
-                        #             selected_ax.texts.clear()  # 清除舊的標籤
-                        #             selected_ax.text(
-                        #                 0.98, 0.85, text,
-                        #                 transform=selected_ax.transAxes,
-                        #                 horizontalalignment='right',
-                        #                 verticalalignment='top',
-                        #                 bbox=dict(
-                        #                     facecolor='white', 
-                        #                     alpha=0.8,
-                        #                     edgecolor='none',  # 移除邊框
-                        #                     boxstyle='round,pad=0.5'  # 添加圓角
-                        #                 ),
-                        #                 zorder=float('inf')  # 使用無限大的 zorder 確保始終在最上層
-                        #             )
-                        #             canvas.draw()
-                        
-                        # # 綁定點擊事件
-                        # canvas.mpl_connect('button_press_event', on_selected_plot_click)
-                    
+                        print(f"[plot_selected_ranges] 添加選中範圍的線，label_name: {label_name}")
                     # 設置主圖表屬性
                     ax.set_title(col_name, 
                                fontsize=10,
@@ -1586,7 +1575,6 @@ class PlotManager:
     def _update_right_plot_value(self, plot_type, index, value, range_id):
         """更新主圖表上的Run標籤數值"""
         try:
-            # 根據plot_type獲取對應的軸
             ax_mapping = {
                 'speed': 'speed',
                 'r_scale1': 'r_scale1',
@@ -1599,14 +1587,28 @@ class PlotManager:
                 
             ax = self.axes[ax_name]
             
+            # 尋找對應的 item_data 以獲取自定義標籤
+            if hasattr(self, 'current_checked_items'):
+                item_data = next((item for item in self.current_checked_items 
+                                if item['id'] == range_id), None)
+                label_name = item_data.get('label', '') if item_data else ''
+                print(f"[_update_right_plot_value] 找到對應的 item_data: {item_data}")
+                print(f"[_update_right_plot_value] label_name: {label_name}")
+            else:
+                label_name = ''
+                print(f"[_update_right_plot_value] 警告：找不到 current_checked_items")
+                print(f"[_update_right_plot_value] 使用空白 label_name: {label_name}")
+            
             # 尋找並更新Run標籤
             for text in ax.texts:
                 if hasattr(text, 'range_id') and text.range_id == range_id:
                     # 根據數據類型設置不同的格式
                     if plot_type == 'speed':
-                        text.set_text(f'Run {range_id}\n{value:.1f} km/h')
+                        print(f"[_update_right_plot_value] 更新速度標籤，使用 label_name: {label_name}")
+                        text.set_text(f'{label_name}\n{value:.1f} km/h')
                     else:
-                        text.set_text(f'Run {range_id}\n{value:.2f}')
+                        print(f"[_update_right_plot_value] 更新其他標籤，使用 label_name: {label_name}")
+                        text.set_text(f'{label_name}\n{value:.2f}')
                     break
             
             # 重繪圖表
