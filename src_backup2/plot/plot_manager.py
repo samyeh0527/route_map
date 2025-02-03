@@ -317,8 +317,8 @@ class PlotManager:
         # 移除舊的高亮
         self._remove_old_highlights()
         
-        if highlight_index is not None:
-            self._add_new_highlights(highlight_index)
+        # if highlight_index is not None:
+        #     self._add_new_highlights(highlight_index)
 
     def _remove_old_highlights(self):
         """移除舊的高亮顯示"""
@@ -354,19 +354,19 @@ class PlotManager:
             # 使用固定的列名列表
             columns_to_plot = ['G Speed', 'R Scale 1', 'R Scale 2']
             
-            for i, (ax, col_name) in enumerate(zip(self.axes, columns_to_plot)):
-                if col_name in self.data_list[0].columns:
-                    # 添加垂直線
-                    line = ax.axvline(x=index, color='r', linestyle='--', zorder=3)
-                    # 添加高亮點
-                    point = ax.plot(index, self.data_list[0][col_name].iloc[index], 
-                                  'ro', markersize=6, zorder=4)[0]
+            # for i, (ax, col_name) in enumerate(zip(self.axes, columns_to_plot)):
+            #     if col_name in self.data_list[0].columns:
+            #         # 添加垂直線
+            #         line = ax.axvline(x=index, color='r', linestyle='--', zorder=3)
+            #         # 添加高亮點
+            #         point = ax.plot(index, self.data_list[0][col_name].iloc[index], 
+            #                       'ro', markersize=6, zorder=4)[0]
                     
-                    # 保存到緩存
-                    if i not in self.cached_plots:
-                        self.cached_plots[i] = {}
-                    self.cached_plots[i]['highlight_line'] = line
-                    self.cached_plots[i]['highlight_point'] = point
+            #         # 保存到緩存
+            #         if i not in self.cached_plots:
+            #             self.cached_plots[i] = {}
+            #         self.cached_plots[i]['highlight_line'] = line
+            #         self.cached_plots[i]['highlight_point'] = point
             
             # 更新畫布
             self.figure.canvas.draw_idle()
@@ -476,17 +476,24 @@ class PlotManager:
                     for ax, range_id, value, vertical_position in updates:
                         if isinstance(ax, str):
                             ax = self.axes[ax]
-                        value_text = ax.text(0.01, vertical_position,
-                                           f'Run {range_id}: {value:.2f}' ,
+                        # 修改字體大小為7，並調整文字框的padding和間距
+                        value_text = ax.text(0, vertical_position,
+                                           f'Run {range_id}: {value:.2f}',
                                            transform=ax.transAxes,
                                            horizontalalignment='left',
                                            verticalalignment='top',
+                                           fontsize=7,  # 縮小字體
                                            zorder=float('inf'),
                                            bbox=dict(facecolor='white',
+                                                   edgecolor='black',
                                                    alpha=0.8,
-                                                   pad=1))
+                                                   pad=0.2,  # 減小padding
+                                                   boxstyle='round,pad=0.3'))  # 減小文字框邊距
                         value_text.is_value_label = True
-
+                        
+                        # 調整垂直間距，避免重疊
+                        vertical_spacing = 0.08  # 減小垂直間距
+                    
                     # 一次性更新所有圖表
                     self._update_all_plots_with_reset_index(nearest_idx)
                     
