@@ -1105,10 +1105,17 @@ class PlotManager:
         """更新軌跡圖上的點"""
         try:
             # 檢查是否有範圍數據
-            if hasattr(self, 'combined_track_data'):
+            if hasattr(self, 'combined_track_data') and self.combined_track_data is not None:
                 data = self.combined_track_data
-                print(f"數據長度: {len(data)} 筆")
-                #print(f"current_checked_items: {self.current_checked_items}")
+                if data.empty:
+                    print("警告: combined_track_data 為空")
+                    return
+                print(f"使用 combined_track_data，數據長度: {len(data)} 筆")
+                
+                if not hasattr(self, 'current_checked_items') or not self.current_checked_items:
+                    print("警告: 沒有選中的範圍數據")
+                    return
+                    
                 # 獲取第一個範圍的長度
                 first_range = self.current_checked_items[0]
                 description = first_range['description']
@@ -1118,14 +1125,20 @@ class PlotManager:
                 
                 # 檢查索引是否超出第一個範圍
                 if index >= first_range_length:
-                    print(f"索引 {index} 超出第一個範圍長度 {first_range_length}")
+                    print(f"警告: 索引 {index} 超出第一個範圍長度 {first_range_length}")
                     return
                     
                 print(f"使用第一個範圍的索引: {index}")
-            elif self.data_list:
+                
+            elif self.data_list and self.data_list[0] is not None:
                 data = self.data_list[0]
+                if data.empty:
+                    print("警告: data_list[0] 為空")
+                    return
+                print(f"使用原始數據，數據長度: {len(data)} 筆")
                 print(f"使用原始索引: {index}")
             else:
+                print("警告: 沒有可用的數據")
                 return
                 
             # 安全地移除舊的 track_point
@@ -1151,7 +1164,7 @@ class PlotManager:
                 track_canvas.draw()
                 
                 # 更新主圖表高亮
-                if hasattr(self, 'combined_track_data'):
+                if hasattr(self, 'combined_track_data') and self.combined_track_data is not None:
                     self._clear_all_highlights()
                     self._update_main_plots_with_reset_index(index)
                 else:
@@ -1161,6 +1174,7 @@ class PlotManager:
             print(f"更新軌跡點時出錯: {str(e)}")
             import traceback
             traceback.print_exc()
+
     def set_range_update_callback(self, callback):
         """設置範圍更新回調函數"""
         self.range_update_callback = callback
