@@ -469,7 +469,7 @@ class PlotManager:
                         if isinstance(ax, str):
                             ax = self.axes[ax]
                         value_text = ax.text(0.48, vertical_position,
-                                           f'Run {range_id}: {value:.2f}' if 'Scale' in ax.get_title() else f'Run {range_id}: {value:.1f} km/h',
+                                           f'Run {range_id}: {value:.2f}' ,
                                            transform=ax.transAxes,
                                            horizontalalignment='right',
                                            verticalalignment='top',
@@ -478,7 +478,7 @@ class PlotManager:
                                                    alpha=0.8,
                                                    pad=1))
                         value_text.is_value_label = True
-                    
+                        # print(f"ax: {ax}")
                     # 一次性更新所有圖表
                     self._update_all_plots_with_reset_index(nearest_idx)
                     
@@ -1449,35 +1449,35 @@ class PlotManager:
                         )[0]
                         
                         # 為右側圖表添加點擊事件處理
-                        def on_selected_plot_click(event):
-                            if event.inaxes:
-                                nearest_idx = int(round(event.xdata))
-                                if 0 <= nearest_idx < len(range_data):
-                                    value = range_data[col_name].iloc[nearest_idx]
-                                    # 更新標籤文字
-                                    if col_name == 'G Speed':
-                                        text = f'Run {range_id}\n{value:.1f} km/h'
-                                    else:
-                                        text = f'Run {range_id}\n{value:.2f}'
-                                    # 添加或更新標籤
-                                    selected_ax.texts.clear()  # 清除舊的標籤
-                                    selected_ax.text(
-                                        0.98, 0.85, text,
-                                        transform=selected_ax.transAxes,
-                                        horizontalalignment='right',
-                                        verticalalignment='top',
-                                        bbox=dict(
-                                            facecolor='white', 
-                                            alpha=0.8,
-                                            edgecolor='none',  # 移除邊框
-                                            boxstyle='round,pad=0.5'  # 添加圓角
-                                        ),
-                                        zorder=float('inf')  # 使用無限大的 zorder 確保始終在最上層
-                                    )
-                                    canvas.draw()
+                        # def on_selected_plot_click(event):
+                        #     if event.inaxes:
+                        #         nearest_idx = int(round(event.xdata))
+                        #         if 0 <= nearest_idx < len(range_data):
+                        #             value = range_data[col_name].iloc[nearest_idx]
+                        #             # 更新標籤文字
+                        #             if col_name == 'G Speed':
+                        #                 text = f'Run {range_id}\n{value:.1f} km/h'
+                        #             else:
+                        #                 text = f'Run {range_id}\n{value:.2f}'
+                        #             # 添加或更新標籤
+                        #             selected_ax.texts.clear()  # 清除舊的標籤
+                        #             selected_ax.text(
+                        #                 0.98, 0.85, text,
+                        #                 transform=selected_ax.transAxes,
+                        #                 horizontalalignment='right',
+                        #                 verticalalignment='top',
+                        #                 bbox=dict(
+                        #                     facecolor='white', 
+                        #                     alpha=0.8,
+                        #                     edgecolor='none',  # 移除邊框
+                        #                     boxstyle='round,pad=0.5'  # 添加圓角
+                        #                 ),
+                        #                 zorder=float('inf')  # 使用無限大的 zorder 確保始終在最上層
+                        #             )
+                        #             canvas.draw()
                         
-                        # 綁定點擊事件
-                        canvas.mpl_connect('button_press_event', on_selected_plot_click)
+                        # # 綁定點擊事件
+                        # canvas.mpl_connect('button_press_event', on_selected_plot_click)
                     
                     # 設置主圖表屬性
                     ax.set_title(col_name, 
