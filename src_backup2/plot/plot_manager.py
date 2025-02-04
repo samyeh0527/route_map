@@ -579,7 +579,7 @@ class PlotManager:
                             horizontalalignment='right'
                         )
                         self.value_texts.append(text)
-                        
+                        print(f"[_update_main_plots_with_reset_index] 更新數值標籤，value: {value}")
                         # 添加索引標籤
                         index_text = ax.text(
                             0.02, 0.95,
@@ -1311,17 +1311,21 @@ class PlotManager:
     def highlight_range(self, start_index, end_index, range_id):
         """在主圖表上高亮顯示指定Run"""
         try:
-            # 檢查是否有 current_checked_items
-            if hasattr(self, 'current_checked_items'):
-                item_data = next((item for item in self.current_checked_items 
-                                if item['id'] == range_id), None)
-                label_name = item_data.get('label', '') if item_data else ''
-                print(f"[highlight_range] 找到對應的 item_data: {item_data}")
-                print(f"[highlight_range] label_name: {label_name}")
+            # 檢查是否有 current_checked_items 並確保它不為 None
+            label_name = f'Run {range_id}'  # 預設標籤名稱
+            if hasattr(self, 'current_checked_items') and self.current_checked_items:
+                try:
+                    item_data = next((item for item in self.current_checked_items 
+                                    if item['id'] == range_id), None)
+                    if item_data and 'label' in item_data:
+                        label_name = item_data['label']
+                    print(f"[highlight_range] 找到對應的 item_data: {item_data}")
+                    print(f"[highlight_range] label_name: {label_name}")
+                except Exception as e:
+                    print(f"[highlight_range] 處理 item_data 時出錯: {str(e)}")
             else:
-                label_name = ''
-                print(f"[highlight_range] 警告：找不到 current_checked_items")
-                print(f"[highlight_range] 使用空白 label_name: {label_name}")
+                print(f"[highlight_range] 警告：找不到或無效的 current_checked_items")
+                print(f"[highlight_range] 使用預設 label_name: {label_name}")
             
             # 原有的代碼...
             highlights = []
@@ -1329,9 +1333,15 @@ class PlotManager:
             colors = ['#FFD700', '#98FB98', '#87CEFA', '#DDA0DD', '#F08080']
             color = colors[range_id % len(colors)]
             
-            axes = self.figure.get_axes()
+            if not self.axes:
+                print("[highlight_range] 錯誤：找不到圖表軸")
+                return
             
-            for i, ax in enumerate(axes):
+            for i, (ax_name, ax) in enumerate(self.axes.items()):
+                if ax is None:
+                    print(f"[highlight_range] 警告：軸 {ax_name} 為 None")
+                    continue
+                    
                 highlight = ax.axvspan(start_index, end_index, 
                                      alpha=0.2, 
                                      color=color,
@@ -1343,21 +1353,23 @@ class PlotManager:
                 
                 if i == 0:
                     label_type = 'speed'
+                elif i == 1:
+                    label_type = 'r_scale1'
                 else:
-                    label_type = 'r_scale1' if i == 1 else 'r_scale2'
+                    label_type = 'r_scale2'
 
                 print(f"[highlight_range] 添加標籤，軸 {i}，使用 label_name: {label_name}")
                 text = ax.text(x_pos, y_pos, 
-                              label_name,  # 直接使用 label_name
-                              horizontalalignment='right',
-                              verticalalignment='top',
-                              transform=ax.get_xaxis_transform(),
-                              bbox=dict(facecolor='white',
-                                      edgecolor=color,
-                                      alpha=0.8,
-                                      boxstyle='round,pad=0.5'),
-                              fontsize=9,
-                              zorder=5)
+                             label_name,
+                             horizontalalignment='right',
+                             verticalalignment='top',
+                             transform=ax.get_xaxis_transform(),
+                             bbox=dict(facecolor='white',
+                                     edgecolor=color,
+                                     alpha=0.8,
+                                     boxstyle='round,pad=0.5'),
+                             fontsize=9,
+                             zorder=5)
                 
                 text.range_id = range_id
                 text.label_type = label_type
@@ -1370,7 +1382,9 @@ class PlotManager:
             
         except Exception as e:
             print(f"添加Run高亮時出錯: {str(e)}")
-    
+            import traceback
+            traceback.print_exc()
+
     def remove_range_highlight(self, range_id):
         """移除指定Run的高亮顯示"""
         try:
