@@ -1564,8 +1564,8 @@ class PlotManager:
             combined_data = pd.DataFrame()
             
             # 反轉列表順序，使第一個選中的Run顯示在最上層
-            reversed_items = list(reversed(checked_items))
-            
+            #reversed_items = list(reversed(checked_items))
+            reversed_items = list((checked_items))
             # 繪製每個選中Run的軌跡
             for index, item_data in enumerate(reversed_items):
                 description = item_data['description']

@@ -4,6 +4,7 @@ from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QPushButton, QFileDialog,
     QHBoxLayout, QLabel, QSpinBox, QMessageBox, QApplication, QListWidget, QListWidgetItem, QToolBar
 )
+from PyQt5.QtGui import QIcon
 from PyQt5.QtCore import Qt, QTimer
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
@@ -11,7 +12,7 @@ import pandas as pd
 from matplotlib import rcParams
 import numpy as np
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
-
+import sys
 from data.data_processor import DataProcessor
 from plot.plot_manager import PlotManager
 from ui.overlay_widget import OverlayWidget
@@ -25,6 +26,13 @@ class MapViewer(QMainWindow):
         font.setFamily("Microsoft YaHei")  # 或其他支持中文的字體
         self.setFont(font)
         self.setWindowTitle("路線圖檢視器")
+        if getattr(sys, 'frozen', False):
+            icon_path = sys._MEIPASS + '\\src\\icon\\002.ico'  # 使用打包後的路徑
+        else:
+            icon_path = 'icon/002.ico'  # 開發時的路徑
+        self.setWindowIcon(QIcon(icon_path))
+
+
         self.setGeometry(100, 100, 1200, 800)
         
         # 初始化變量

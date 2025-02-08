@@ -21,10 +21,11 @@ def setup_matplotlib():
 def main():
     # 在創建任何 matplotlib 圖表之前設置配置
     setup_matplotlib()
-    
     app = QApplication(sys.argv)
     # 設置全局字體，支持中文顯示
     font = QFont("Microsoft YaHei", 9)  # 使用微軟雅黑字體，大小為9
+    # 處理圖片的路徑，確保打包後能夠正常顯示
+
     app.setFont(font)
     viewer = MapViewer()
     viewer.show()

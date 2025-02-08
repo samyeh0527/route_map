@@ -1,1 +1,1 @@
-pyinstaller --onefile --noconsole --add-data "src;src" src/main.py
+pyinstaller --onefile --noconsole --add-data "src;src" --windowed --icon=src/002.ico src/main.py
