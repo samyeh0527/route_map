@@ -791,9 +791,7 @@ class PlotManager:
             
             x_range = x_max - x_min
             y_range = y_max - y_min
-            # 計算以滑鼠位置為中心的新範圍
-            x_center = event.xdata
-            y_center = event.ydata
+
             # 限制最小範圍，避免過度縮小
             min_x_range = 0.001
             min_y_range = 0.001
