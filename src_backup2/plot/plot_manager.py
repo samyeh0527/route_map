@@ -58,8 +58,9 @@ class PlotManager:
                 return
             
             # 清除起點設定
-            self.clear_start_point()
-            
+            #self.clear_start_point()
+            for ax in self.axes.values():
+                ax.clear()
             # 清除分段範圍相關設定
             if hasattr(self, 'current_checked_items'):
                 self.current_checked_items = None
@@ -328,16 +329,19 @@ class PlotManager:
                     plot_cache = self.cached_plots[i]
                     # 清除高亮線
                     if 'highlight_line' in plot_cache and plot_cache['highlight_line']:
-                        plot_cache['highlight_line'].remove()
-                        plot_cache['highlight_line'] = None
+                        #plot_cache['highlight_line'].remove()
+                        #plot_cache['highlight_line'] = None
+                        plot_cache['highlight_line'].set_visible(False)
                     
                     # 清除高亮點
                     if 'highlight_point' in plot_cache and plot_cache['highlight_point']:
                         if isinstance(plot_cache['highlight_point'], (list, tuple)):
                             for artist in plot_cache['highlight_point']:
                                 artist.remove()
+                                plot_cache['highlight_point'].set_visible(False)
                         else:
                             plot_cache['highlight_point'].remove()
+                            plot_cache['highlight_point'].set_visible(False)
                         plot_cache['highlight_point'] = None
             
             # 強制更新畫布
@@ -785,10 +789,21 @@ class PlotManager:
             else:  # 縮小
                 scale_factor = base_scale
             
+            x_range = x_max - x_min
+            y_range = y_max - y_min
             # 計算以滑鼠位置為中心的新範圍
             x_center = event.xdata
             y_center = event.ydata
-            
+            # 限制最小範圍，避免過度縮小
+            min_x_range = 0.001
+            min_y_range = 0.001
+            if x_range * scale_factor < min_x_range:
+                return
+            if y_range * scale_factor < min_y_range:
+                return
+
+            x_center = event.xdata
+            y_center = event.ydata
             # 計算新的範圍
             new_x_min = x_center - (x_center - x_min) * scale_factor
             new_x_max = x_center + (x_max - x_center) * scale_factor
@@ -1077,7 +1092,10 @@ class PlotManager:
             if pd.isna(x_click) or pd.isna(y_click):
                 print("警告：無效的點擊座標")
                 return None
-            
+                    # 避免計算空的距離數組
+            if data[x_col].isna().all() or data[y_col].isna().all():
+                print("警告：所有座標數據為 NaN")
+                return None
             # 計算點擊位置到所有點的距離
             distances = np.sqrt(
                 (data[x_col] - x_click) ** 2 + 
@@ -1090,11 +1108,12 @@ class PlotManager:
                 return None
             
             # 找到最小距離的索引
-            nearest_idx = distances.idxmin()
-            
+            #nearest_idx = distances.idxmin()
+            nearest_idx = distances.idxmin() if not distances.empty else None
             # 如果使用的是重設索引的數據，直接返回索引
             return nearest_idx
             
+
         except Exception as e:
             print(f"查找最近點時出錯: {str(e)}")
             import traceback
