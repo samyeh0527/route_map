@@ -660,7 +660,16 @@ class MapViewer(QMainWindow):
             print(f"文件路徑: {file_path}")
             
             # 讀取 CSV 文件
-            self.full_data = pd.read_csv(file_path)
+            #self.full_data = pd.read_csv(file_path)
+            try:
+                self.full_data = pd.read_csv(file_path, encoding="utf-8")
+            except UnicodeDecodeError:
+                self.full_data = pd.read_csv(file_path, encoding="gbk")  # 嘗試 GBK
+
+            # 檢查數據是否包含 X-Y 或 Longitude-Latitude
+            if not {'X', 'Y'}.issubset(self.full_data.columns) and not {'Longitude', 'Latitude'}.issubset(self.full_data.columns):
+                QMessageBox.critical(self, "錯誤", "CSV 文件缺少必要的座標欄位 (X, Y 或 Longitude, Latitude)")
+                return
             print(f"載入數據總長度: {len(self.full_data)} 筆")
             
             # 更新主圖表（三個垂直子圖）
@@ -846,8 +855,13 @@ class MapViewer(QMainWindow):
             # 獲取選擇的數據範圍
             selected_range = self.range_combo.currentText()
             if selected_range == "全部":
-                start_idx = 0
-                end_idx = len(self.full_data)
+                # start_idx = 0
+                # end_idx = len(self.full_data)
+                try:
+                    start_idx = max(0, min(start_idx, len(self.full_data) - 1))
+                    end_idx = max(start_idx, min(end_idx, len(self.full_data)))
+                except Exception as e:
+                    print(f"更新地圖時出錯: {str(e)}")
             else:
                 # 解析選擇的範圍（格式如 "0-100"）
                 start_str, end_str = selected_range.split('-')
@@ -978,7 +992,7 @@ class MapViewer(QMainWindow):
         """更新軌跡圖"""
         self.plot_track()   
 
-    def plot_track(self):
+    def plot_track2(self):
         """繪製位置軌跡圖"""
         self.track_ax.clear()
         
@@ -1012,4 +1026,53 @@ class MapViewer(QMainWindow):
         self.track_ax.set_xlim(x_min - margin_x, x_max + margin_x)
         self.track_ax.set_ylim(y_min - margin_y, y_max + margin_y)
         
+        self.track_canvas.draw()
+
+    def plot_track(self):
+        """繪製位置軌跡圖"""
+        self.track_ax.clear()
+
+        if 'X' in self.full_data.columns and 'Y' in self.full_data.columns:
+            print("繪製位置軌跡圖 (X-Y)")
+            x_data, y_data = self.full_data['X'].dropna(), self.full_data['Y'].dropna()
+            x_label, y_label = 'X', 'Y'
+        elif 'Longitude' in self.full_data.columns and 'Latitude' in self.full_data.columns:
+            print("繪製位置軌跡圖 (經緯度)")
+            x_data, y_data = self.full_data['Longitude'].dropna(), self.full_data['Latitude'].dropna()
+            x_label, y_label = '經度', '緯度'
+        else:
+            print("數據中無法找到合適的 X-Y 或 經緯度 列")
+            return  # 若無合適數據則不繪製
+
+        # 檢查數據是否有效
+        if x_data.empty or y_data.empty:
+            print("數據為空，無法繪製軌跡圖")
+            return
+
+        # 繪製軌跡圖
+        self.track_ax.plot(x_data, y_data, 'b-', linewidth=1.5, zorder=1)
+        self.track_ax.set_xlabel(x_label, fontsize=10)
+        self.track_ax.set_ylabel(y_label, fontsize=10)
+        self.track_ax.set_title("位置軌跡圖", fontsize=8)
+        self.track_ax.grid(True)
+        self.track_ax.set_aspect('equal', adjustable='datalim')
+
+        # 設置適當的邊距
+        x_min, x_max = x_data.min(), x_data.max()
+        y_min, y_max = y_data.min(), y_data.max()
+
+        # 檢查數據範圍
+        if x_min == x_max or y_min == y_max:
+            print("數據範圍過小，使用默認範圍")
+            x_min, x_max = x_min - 1, x_max + 1
+            y_min, y_max = y_min - 1, y_max + 1
+        else:
+            margin_x = (x_max - x_min) * 0.1
+            margin_y = (y_max - y_min) * 0.1
+            x_min, x_max = x_min - margin_x, x_max + margin_x
+            y_min, y_max = y_min - margin_y, y_max + margin_y
+
+        self.track_ax.set_xlim(x_min, x_max)
+        self.track_ax.set_ylim(y_min, y_max)
+
         self.track_canvas.draw()
