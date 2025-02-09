@@ -669,35 +669,7 @@ class MapViewer(QMainWindow):
             self.canvas.draw()
             
             # 更新位置軌跡圖（底部右方）
-            self.track_ax.clear()
-            if 'X' in self.full_data.columns and 'Y' in self.full_data.columns:
-                print("繪製位置軌跡圖 (X-Y)")
-                self.track_ax.plot(self.full_data['X'], self.full_data['Y'], 
-                                 'b-', linewidth=1.5, zorder=1)
-                self.track_ax.set_xlabel('X', fontsize=10)
-                self.track_ax.set_ylabel('Y', fontsize=10)
-            elif 'Longitude' in self.full_data.columns and 'Latitude' in self.full_data.columns:
-                print("繪製位置軌跡圖 (經緯度)")
-                self.track_ax.plot(self.full_data['Longitude'], self.full_data['Latitude'], 
-                                 'b-', linewidth=1.5, zorder=1)
-                self.track_ax.set_xlabel('經度', fontsize=10)
-                self.track_ax.set_ylabel('緯度', fontsize=10)
-            
-            self.track_ax.set_title("位置軌跡圖", fontsize=8)
-            self.track_ax.grid(True)
-            self.track_ax.set_aspect('equal', adjustable='datalim')  # 修改：使用 adjustable='datalim'
-            
-            # 設置適當的邊距
-            x_data = self.full_data['X' if 'X' in self.full_data.columns else 'Longitude']
-            y_data = self.full_data['Y' if 'Y' in self.full_data.columns else 'Latitude']
-            x_min, x_max = x_data.min(), x_data.max()
-            y_min, y_max = y_data.min(), y_data.max()
-            margin_x = (x_max - x_min) * 0.1
-            margin_y = (y_max - y_min) * 0.1
-            
-            # 設置軸範圍
-            self.track_ax.set_xlim(x_min - margin_x, x_max + margin_x)
-            self.track_ax.set_ylim(y_min - margin_y, y_max + margin_y)
+            self.plot_track()
             
             # 保存初始視圖狀態
             self.track_home_limits = {
@@ -1004,35 +976,40 @@ class MapViewer(QMainWindow):
 
     def _update_track_ax(self):
         """更新軌跡圖"""
-        self.track_ax.clear()
+        self.plot_track()   
 
+    def plot_track(self):
+        """繪製位置軌跡圖"""
         self.track_ax.clear()
+        
         if 'X' in self.full_data.columns and 'Y' in self.full_data.columns:
             print("繪製位置軌跡圖 (X-Y)")
-            self.track_ax.plot(self.full_data['X'], self.full_data['Y'], 
-                                'b-', linewidth=1.5, zorder=1)
-            self.track_ax.set_xlabel('X', fontsize=10)
-            self.track_ax.set_ylabel('Y', fontsize=10)
+            x_data, y_data = self.full_data['X'], self.full_data['Y']
+            x_label, y_label = 'X', 'Y'
         elif 'Longitude' in self.full_data.columns and 'Latitude' in self.full_data.columns:
             print("繪製位置軌跡圖 (經緯度)")
-            self.track_ax.plot(self.full_data['Longitude'], self.full_data['Latitude'], 
-                                'b-', linewidth=1.5, zorder=1)
-            self.track_ax.set_xlabel('經度', fontsize=10)
-            self.track_ax.set_ylabel('緯度', fontsize=10)
-        
+            x_data, y_data = self.full_data['Longitude'], self.full_data['Latitude']
+            x_label, y_label = '經度', '緯度'
+        else:
+            print("數據中無法找到合適的 X-Y 或 經緯度 列")
+            return  # 若無合適數據則不繪製
+
+        # 繪製軌跡圖
+        self.track_ax.plot(x_data, y_data, 'b-', linewidth=1.5, zorder=1)
+        self.track_ax.set_xlabel(x_label, fontsize=10)
+        self.track_ax.set_ylabel(y_label, fontsize=10)
         self.track_ax.set_title("位置軌跡圖", fontsize=8)
         self.track_ax.grid(True)
-        self.track_ax.set_aspect('equal', adjustable='datalim')  # 修改：使用 adjustable='datalim'
-        
+        self.track_ax.set_aspect('equal', adjustable='datalim')
+
         # 設置適當的邊距
-        x_data = self.full_data['X' if 'X' in self.full_data.columns else 'Longitude']
-        y_data = self.full_data['Y' if 'Y' in self.full_data.columns else 'Latitude']
         x_min, x_max = x_data.min(), x_data.max()
         y_min, y_max = y_data.min(), y_data.max()
         margin_x = (x_max - x_min) * 0.1
         margin_y = (y_max - y_min) * 0.1
-        
+
         # 設置軸範圍
         self.track_ax.set_xlim(x_min - margin_x, x_max + margin_x)
         self.track_ax.set_ylim(y_min - margin_y, y_max + margin_y)
+        
         self.track_canvas.draw()
