@@ -34,6 +34,7 @@ class PlotManager:
         self.figure.canvas.mpl_connect('button_press_event', self._on_plot_click)
         # 添加縮放事件處理
         self.figure.canvas.mpl_connect('scroll_event', self._on_scroll)
+        
         self.click_callback = None
         self.is_setting_start_point = False
         self.start_point_line = None
@@ -48,6 +49,12 @@ class PlotManager:
         self.track_point = None
         self.range_update_callback = None  # 添加新的回調屬性
         self.range_highlights = {}  # 存儲範圍高亮對象
+        self.is_dragging = False  # 初始化拖曳狀態
+        # 設定滑鼠事件 (點擊 & 拖曳)
+        self.figure.canvas.mpl_connect('button_press_event', self._FastDragPlot)
+        self.figure.canvas.mpl_connect('motion_notify_event', self._FastDragPlot)
+        self.figure.canvas.mpl_connect('button_release_event', self._FastDragPlot)
+
 
     def create_plots(self, highlight_index=None, highlight_range=None):
         """創建圖表，支持高亮顯示"""
@@ -817,6 +824,41 @@ class PlotManager:
             
         except Exception as e:
             print(f"縮放處理時出錯: {str(e)}")
+            import traceback
+            traceback.print_exc()
+    def _FastDragPlot(self, event):
+        """快速拖動圖表 (支援滑鼠點擊拖曳)"""
+        try:
+            if event.inaxes is None:
+                return
+
+            ax = event.inaxes
+
+            # 滑鼠按下 (開始拖曳)
+            if event.name == 'button_press_event' and event.button == 1:
+                self.is_dragging = True
+                self.x0, self.y0 = event.xdata, event.ydata
+                self.xlim0, self.ylim0 = ax.get_xlim(), ax.get_ylim()
+
+            # 滑鼠移動 (執行拖曳)
+            elif event.name == 'motion_notify_event' and getattr(self, "is_dragging", False):  # 避免屬性不存在
+                if event.xdata is None or event.ydata is None:
+                    return
+                
+                dx = self.x0 - event.xdata
+                dy = self.y0 - event.ydata
+
+                ax.set_xlim(self.xlim0[0] + dx, self.xlim0[1] + dx)
+                ax.set_ylim(self.ylim0[0] + dy, self.ylim0[1] + dy)
+
+                self.figure.canvas.draw_idle()  # 即時更新畫布
+
+            # 滑鼠釋放 (停止拖曳)
+            elif event.name == 'button_release_event' and event.button == 1:
+                self.is_dragging = False
+
+        except Exception as e:
+            print(f"拖拉圖表時出錯: {str(e)}")
             import traceback
             traceback.print_exc()
 
