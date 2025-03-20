@@ -52,7 +52,7 @@ class MapViewer(QMainWindow):
         self.load_button = QPushButton("載入CSV")
         self.set_start_button = QPushButton("設定起點")  # 在這裡創建按鈕
         self.update_button = QPushButton("更新圖表")
-        self.switch_lap_button = QPushButton("切換單圈")
+        self.switch_lap_button = QPushButton("繪製單圈與重製單圈")
         
         # 設置UI
         self._init_ui()
@@ -703,8 +703,8 @@ class MapViewer(QMainWindow):
             # 在載入數據後更新時間顯示
             self._calculate_time_difference()
             
-            # 新增：更新布局
-            self.track_figure.tight_layout()
+            # 新增：更新布局 (會自動調整但有可能軌跡圖會縮小)
+            #self.track_figure.tight_layout()
             
             print("=== CSV 文件載入完成 ===\n")
             
@@ -717,6 +717,7 @@ class MapViewer(QMainWindow):
         super().resizeEvent(event)
         if hasattr(self, 'overlay'):
             self.overlay.resize(self.central_widget.size())
+        print(f'窗口大小改變: {self.central_widget.size()}')
 
     def _on_plot_clicked(self, index):
         """處理主圖表點擊回調"""
@@ -1049,13 +1050,14 @@ class MapViewer(QMainWindow):
             print("數據為空，無法繪製軌跡圖")
             return
 
-        # 繪製軌跡圖
+        # 繪製軌跡圖(載入資料後，繪製軌跡圖)
         self.track_ax.plot(x_data, y_data, 'b-', linewidth=1.5, zorder=1)
         self.track_ax.set_xlabel(x_label, fontsize=10)
         self.track_ax.set_ylabel(y_label, fontsize=10)
-        self.track_ax.set_title("位置軌跡圖", fontsize=8)
+        self.track_ax.set_title("軌跡圖", fontsize=8)
         self.track_ax.grid(True)
         self.track_ax.set_aspect('equal', adjustable='datalim')
+        
 
         # 設置適當的邊距
         x_min, x_max = x_data.min(), x_data.max()

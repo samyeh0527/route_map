@@ -287,7 +287,7 @@ class PlotManager:
             scatter = ax.scatter(x_data, y_data, c='blue', s=20)
             
             # 設置標題和標籤
-            ax.set_title('位置軌跡圖', fontsize=10)
+            ax.set_title('軌跡圖', fontsize=10)
             ax.set_xlabel(x_label, fontsize=9)
             ax.set_ylabel(y_label, fontsize=9)
             ax.grid(True)
@@ -1262,7 +1262,7 @@ class PlotManager:
             start_x = data[x_col].iloc[start_index]
             start_y = data[y_col].iloc[start_index]
             
-            tolerance = 0.00015
+            tolerance = 0.0002
             
             ranges = []
             current_range = 1
