@@ -53,7 +53,7 @@ class MapViewer(QMainWindow):
         self.set_start_button = QPushButton("設定起點")  # 在這裡創建按鈕
         self.update_button = QPushButton("更新圖表")
         self.switch_lap_button = QPushButton("繪製單圈與重製單圈")
-        self.reset_lap_button = QPushButton("單圈復位")
+        
         # 設置UI
         self._init_ui()
         
@@ -62,7 +62,6 @@ class MapViewer(QMainWindow):
         self.set_start_button.clicked.connect(self.start_setting_start_point)
         self.update_button.clicked.connect(self.update_data_range)
         self.switch_lap_button.clicked.connect(self.switch_lap)
-        self.reset_lap_button.clicked.connect(self.reset_lap)
         
         print("初始化完成：按鈕信號已連接")
 
@@ -123,7 +122,7 @@ class MapViewer(QMainWindow):
         """
         
         # 添加按鈕到頂部布局
-        for button in [self.load_button, self.set_start_button, self.update_button, self.switch_lap_button, self.reset_lap_button]:
+        for button in [self.load_button, self.set_start_button, self.update_button, self.switch_lap_button]:
             button.setStyleSheet(button_style)
             top_button_layout.addWidget(button)
         top_button_layout.addStretch()
@@ -938,57 +937,7 @@ class MapViewer(QMainWindow):
                 print("沒有保存的初始視圖範圍")
         except Exception as e:
             print(f"重置視圖時出錯: {str(e)}")
-    def reset_lap(self):
-        """切換單圈功能"""
-        try:
-            checked_items = []
-            checked_ids = []  # 新增: 儲存已勾選項目的ID
-            
-            # 收集已勾選的項目和ID
-            for i in range(self.check_list.count()):
-                item = self.check_list.item(i)
-                if item.checkState() == Qt.Checked:
-                    item_data = item.data(Qt.UserRole)
-                    checked_items.append(item_data)
-                    checked_ids.append(item_data['id'])  # 儲存項目ID
-            
-            if checked_items:
-                # 更新軌跡圖標題
-                print(f"debug checked_items:{checked_items}")
-                if len(checked_ids) == 1:
-                    self.track_ax.set_title(f"範圍 {checked_ids[0]} 軌跡圖", fontsize=12)
-                else:
-                    id_str = ', '.join(str(id) for id in checked_ids)
-                    self.track_ax.set_title(f"範圍 {id_str} 軌跡圖", fontsize=12)
-                
-                # 使用 plot_manager 繪製圖表
-                # 重新排序 checked_items,讓第一個選的範圍在最後繪製
-                #checked_items.reverse()
-                success = self.plot_manager.plot_selected_ranges(
-                    checked_items,
-                    self.full_data, 
-                    self.axes,
-                    self.canvas,
-                    self.track_ax,
-                    self.track_canvas
-                )
-                
-                if success:
-                    print("\n=== 已重繪範圍 ===")
-                    for id in checked_ids:
-                        print(f"範圍 {id}")
-                else:
-                    QMessageBox.warning(self, "警告", "繪製圖表時發生錯誤")
-            else:
-                print("沒有勾選任何範圍")
-                QMessageBox.warning(self, "警告", "請先勾選要顯示的範圍")
-            
-        except Exception as e:
-            print(f"切換單圈時出錯: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            QMessageBox.critical(self, "錯誤", f"切換單圈時出錯：{str(e)}")
-            
+
     def switch_lap(self):
         """切換單圈功能"""
         try:

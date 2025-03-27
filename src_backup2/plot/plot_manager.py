@@ -553,9 +553,9 @@ class PlotManager:
             data = self.combined_track_data
             
             # 檢查索引是否在有效範圍內
-            # if index >= len(data):
-            #     print(f"警告：索引 {index} 超出範圍 (最大值: {len(data)-1})")
-            #     return
+            if index >= len(data):
+                print(f"警告：索引 {index} 超出範圍 (最大值: {len(data)-1})")
+                return
             
             # 清除舊的標記
             self._clear_all_highlights()
@@ -887,9 +887,8 @@ class PlotManager:
             y = data[y_col].iloc[index]
             
             # 更新軌跡圖上的點
-            print(f"準備更新軌跡圖 clsaa name {self.update_track_point.__name__}")
             self.update_track_point(index, track_ax, track_canvas)
-            print(f"已更新軌跡圖完畢 clsaa name {self.update_track_point.__name__}")
+            print(f"已更新軌跡圖上的點 clsaa name {self.update_track_point.__name__}")
             # 清除舊的標記線
             if hasattr(self, 'start_point_line') and self.start_point_line:
                 for line in self.start_point_line:
@@ -1162,61 +1161,78 @@ class PlotManager:
             return None
         
     def update_track_point(self, index, track_ax, track_canvas):
-            """更新軌跡圖上的點，從第一筆數據開始計算範圍"""
-            try:
-                # 檢查是否有範圍數據
-                if hasattr(self, 'combined_track_data') and self.combined_track_data is not None:
-                    data = self.combined_track_data
-                elif self.data_list and self.data_list[0] is not None:
-                    data = self.data_list[0]
-                else:
-                    print("警告: 沒有可用的數據")
-                    return
-
+        """更新軌跡圖上的點"""
+        try:
+            # 檢查是否有範圍數據
+            if hasattr(self, 'combined_track_data') and self.combined_track_data is not None:
+                data = self.combined_track_data
                 if data.empty:
-                    print("警告: 數據為空")
+                    print("警告: combined_track_data 為空")
                     return
-
-                x_col = 'X' if 'X' in data.columns else 'Longitude'
-                y_col = 'Y' if 'Y' in data.columns else 'Latitude'
+                print(f"使用 combined_track_data，數據長度: {len(data)} 筆")
                 
-                # 確保索引有效
-                if not (0 <= index < len(data)):
-                    print(f"警告: 索引 {index} 超出範圍")
+                if not hasattr(self, 'current_checked_items') or not self.current_checked_items:
+                    print("警告: 沒有選中的範圍數據")
                     return
+                    
+                # 獲取第一個範圍的長度
+                first_range = self.current_checked_items[0]
+                description = first_range['description']
+                start_idx = int(description.split(',')[0].split(':')[1])
+                end_idx = int(description.split(',')[1].split(':')[1])
+                first_range_length = end_idx - start_idx + 1
                 
-                # 取得點選位置的經緯度
-                start_x = data[x_col].iloc[index]
-                start_y = data[y_col].iloc[index]
-
-                # 從第一筆數據開始計算範圍
-                self.analyze_ranges(0)
-
-                # 安全地移除舊的 track_point
-                if hasattr(self, 'track_point') and self.track_point is not None:
-                    try:
-                        self.track_point.remove()
-                    except ValueError:
-                        pass  # 忽略移除失敗的情況
-                self.track_point = None
-
-                # 更新軌跡圖上的點
+                # 檢查索引是否超出第一個範圍
+                if index >= first_range_length:
+                    print(f"警告: 索引 {index} 超出第一個範圍長度 {first_range_length}")
+                    return
+                    
+                print(f"使用第一個範圍的索引: {index}")
+                
+            elif self.data_list and self.data_list[0] is not None:
+                data = self.data_list[0]
+                if data.empty:
+                    print("警告: data_list[0] 為空")
+                    return
+                print(f"使用原始數據，數據長度: {len(data)} 筆")
+                print(f"使用原始索引: {index}")
+            else:
+                print("警告: 沒有可用的數據")
+                return
+                
+            # 安全地移除舊的 track_point
+            if hasattr(self, 'track_point') and self.track_point is not None:
+                try:
+                    self.track_point.remove()
+                except ValueError:
+                    pass  # 忽略移除失敗的情況
+            self.track_point = None
+            
+            x_col = 'X' if 'X' in data.columns else 'Longitude'
+            y_col = 'Y' if 'Y' in data.columns else 'Latitude'
+            
+            # 確保索引在有效範圍內
+            if 0 <= index < len(data):
                 self.track_point = track_ax.scatter(
-                    start_x, start_y,
+                    data[x_col].iloc[index],
+                    data[y_col].iloc[index],
                     color='red',
                     s=100,
                     zorder=5
                 )
                 track_canvas.draw()
-
+                
                 # 更新主圖表高亮
-                self._clear_all_highlights()
-                self._update_main_plots_with_reset_index(index)
-            
-            except Exception as e:
-                print(f"更新軌跡點時出錯: {str(e)}")
-                import traceback
-                traceback.print_exc()
+                if hasattr(self, 'combined_track_data') and self.combined_track_data is not None:
+                    self._clear_all_highlights()
+                    self._update_main_plots_with_reset_index(index)
+                else:
+                    self.highlight_point(index)
+                
+        except Exception as e:
+            print(f"更新軌跡點時出錯: {str(e)}")
+            import traceback
+            traceback.print_exc()
 
     def set_range_update_callback(self, callback):
         """設置範圍更新回調函數"""
@@ -1246,7 +1262,7 @@ class PlotManager:
             start_x = data[x_col].iloc[start_index]
             start_y = data[y_col].iloc[start_index]
             
-            tolerance = 0.00015
+            tolerance = 0.0002
             
             ranges = []
             current_range = 1
