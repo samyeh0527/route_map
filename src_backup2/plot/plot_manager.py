@@ -919,7 +919,7 @@ class PlotManager:
             track_canvas.draw()
             
             # 呼叫 analyze_ranges 進行分析
-            analyze =self.analyze_ranges(index)
+            self.analyze_ranges(index)
             #print(analyze,"\n",type(analyze),"\n",len(analyze))  
             print(f"起點已設定在索引: {index}")
             
@@ -1255,21 +1255,25 @@ class PlotManager:
             QApplication.processEvents()
             
             data = self.data_list[0]
+            #print(f'[DEBUG] : \n{data}')
             data['Time'] = pd.to_datetime(data['Time'])
             
             x_col = 'X' if 'X' in data.columns else 'Longitude'
             y_col = 'Y' if 'Y' in data.columns else 'Latitude'
+
+            #保留 start_index 取出的座標
             start_x = data[x_col].iloc[start_index]
             start_y = data[y_col].iloc[start_index]
             
-            tolerance = 0.0002
+            tolerance = 0.00012  # 座標容差
             
             ranges = []
             current_range = 1
-            last_match_index = start_index
+            last_match_index = None
             in_range = False
-            
-            for i in range(start_index + 1, len(data)):
+
+            #從第一筆開始遍歷
+            for i in range(len(data)):
                 if i % 100 == 0:
                     progress.setLabelText(f"分析數據範圍中...\n已處理: {i}/{len(data)} 筆數據")
                     QApplication.processEvents()
@@ -1283,42 +1287,43 @@ class PlotManager:
                 
                 if x_match and y_match:
                     if not in_range:
-                        time_diff = (current_time - data['Time'].iloc[last_match_index]).total_seconds()
+                        if last_match_index is not None:
+                            time_diff = (current_time - data['Time'].iloc[last_match_index]).total_seconds()
                         
-                        if time_diff >= 5:
-                            # 計算該範圍內的資料筆數
-                            data_count = i - last_match_index + 1
-                            
-                            print(f"\n找到範圍 {current_range}:")
-                            print(f"起點: 索引 {last_match_index}")
-                            print(f"  座標: ({data[x_col].iloc[last_match_index]}, {data[y_col].iloc[last_match_index]})")
-                            print(f"  時間: {data['Time'].iloc[last_match_index]}")
-                            print(f"終點: 索引 {i}")
-                            print(f"  座標: ({current_x}, {current_y})")
-                            print(f"  時間: {current_time}")
-                            print(f"資料筆數: {data_count}")
-                            
-                            hours = int(time_diff // 3600)
-                            minutes = int((time_diff % 3600) // 60)
-                            seconds = int(time_diff % 60)
-                            time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-                            print(f"時間差: {time_str}")
-                            print("---")
-                            
-                            ranges.append({
-                                'range_number': current_range,
-                                'start_index': last_match_index,
-                                'end_index': i,
-                                'start_time': data['Time'].iloc[last_match_index],
-                                'end_time': current_time,
-                                'duration': time_diff,
-                                'duration_str': time_str,
-                                'data_count': data_count  # 新增資料筆數
-                            })
-                            
-                            current_range += 1
-                            last_match_index = i
-                            in_range = True
+                            if time_diff >= 5:
+                                # 計算該範圍內的資料筆數
+                                data_count = i - last_match_index + 1
+                                
+                                print(f"\n找到範圍 {current_range}:")
+                                print(f"起點: 索引 {last_match_index}")
+                                print(f"  座標: ({data[x_col].iloc[last_match_index]}, {data[y_col].iloc[last_match_index]})")
+                                print(f"  時間: {data['Time'].iloc[last_match_index]}")
+                                print(f"終點: 索引 {i}")
+                                print(f"  座標: ({current_x}, {current_y})")
+                                print(f"  時間: {current_time}")
+                                print(f"資料筆數: {data_count}")
+                                
+                                hours = int(time_diff // 3600)
+                                minutes = int((time_diff % 3600) // 60)
+                                seconds = int(time_diff % 60)
+                                time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+                                print(f"時間差: {time_str}")
+                                print("---")
+                                
+                                ranges.append({
+                                    'range_number': current_range,
+                                    'start_index': last_match_index,
+                                    'end_index': i,
+                                    'start_time': data['Time'].iloc[last_match_index],
+                                    'end_time': current_time,
+                                    'duration': time_diff,
+                                    'duration_str': time_str,
+                                    'data_count': data_count  # 新增資料筆數
+                                })
+                                
+                                current_range += 1
+                                in_range = True
+                    last_match_index = i
                 else:
                     if in_range:
                         in_range = False
