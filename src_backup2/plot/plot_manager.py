@@ -1265,7 +1265,7 @@ class PlotManager:
             start_x = data[x_col].iloc[start_index]
             start_y = data[y_col].iloc[start_index]
             
-            tolerance = 0.00012  # 座標容差
+            tolerance = 0.00004  # 座標容差
             
             ranges = []
             current_range = 1
