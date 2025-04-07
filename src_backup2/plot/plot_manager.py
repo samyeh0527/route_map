@@ -4,9 +4,8 @@ import matplotlib.pyplot as plt
 import warnings
 import matplotlib as mpl
 import pandas as pd
-from PyQt5.QtWidgets import QApplication, QProgressDialog
+from PyQt5.QtWidgets import QApplication, QProgressDialog, QMessageBox
 from PyQt5.QtCore import Qt
-
 class PlotManager:
     """圖表管理器"""
     def __init__(self, figure):
@@ -18,7 +17,7 @@ class PlotManager:
         mpl.rcParams['font.sans-serif'] = ['Microsoft YaHei', 'SimHei', 'Arial Unicode MS']
         mpl.rcParams['axes.unicode_minus'] = False
         mpl.rcParams['font.family'] = 'sans-serif'
-        
+        self.weighted_moving_average_size = 0
         self.figure = figure
         self.data_list = []
         self.axes = {}
@@ -551,7 +550,7 @@ class PlotManager:
                 return
             
             data = self.combined_track_data
-            
+            print(f"[_update_main_plots_with_reset_index] combined track data : \n{data}")
             # 檢查索引是否在有效範圍內
             if index >= len(data):
                 print(f"警告：索引 {index} 超出範圍 (最大值: {len(data)-1})")
@@ -1466,6 +1465,8 @@ class PlotManager:
 
     def plot_selected_ranges(self, checked_items, full_data, axes, canvas, track_ax, track_canvas):
         """繪製選中Run的圖表"""
+        #WMA要用這邊的full_data來繪製圖表
+        
         try:
             self.current_checked_items = checked_items
             print(f"[plot_selected_ranges] current_checked_items: {self.current_checked_items}")
@@ -1549,8 +1550,11 @@ class PlotManager:
                         # 獲取該範圍的數據並重設索引
                         range_data = full_data.iloc[start_idx:end_idx+1].copy()
                         range_data.reset_index(drop=True, inplace=True)
-                        
+                        # print(f"[plot_selected_ranges] range_data: \n{range_data}")
                         # 在主圖表上繪製（使用重設後的索引和自定義標籤）
+                        if self.weighted_moving_average_size > 0:
+                             self.weighted_moving_average(self.weighted_moving_average_size,range_data)
+
                         ax.plot(range_data.index, 
                                range_data[col_name], 
                                '-', 
@@ -1720,3 +1724,48 @@ class PlotManager:
             print(f"更新圖表數值時出錯: {str(e)}")
             import traceback
             traceback.print_exc()
+    def weighted_moving_average(self, window_size,pending_data=None):
+        """計算加權移動平均（WMA）"""
+        if not self.data_list:  # 如果 self.data_list 為空，則直接 return
+            msg_box = QMessageBox()
+            msg_box.setIcon(QMessageBox.Warning)
+            msg_box.setWindowTitle("警告")
+            msg_box.setText("self.data_list 為空，無法進行加權移動平均計算，請先載入數據")
+            msg_box.setStandardButtons(QMessageBox.Ok)
+            msg_box.exec_()
+            return None
+            
+        if window_size <= 0:
+            print("警告：窗口大小必須大於0")
+            return None
+        elif pending_data is not None:
+            for scale in ['R Scale 1', 'R Scale 2']:
+                if scale in pending_data[0].columns:
+                    data = pending_data[0][scale]
+                    self.Debug_csv(data,'orignal_data')
+                    weights = np.arange(1, window_size + 1)  # 生成遞增權重
+                    weights = weights / weights.sum()  # 標準化權重
+                    wma = np.convolve(data.to_numpy(), weights, mode='valid')
+                    print(f'[DEBUG] {type(wma)}\n{wma}')
+                    pending_data[0][scale] = pd.Series(wma)
+                    self.Debug_csv(pd.Series(wma),'wma_data')  
+                    print(f"[weighted_moving_average] \n{self.data_list[0][scale]} 加權移動平均計算完成")
+        else:
+            for scale in ['R Scale 1', 'R Scale 2']:
+                if scale in self.data_list[0].columns:
+                    data = self.data_list[0][scale]
+                    #test use
+                    self.Debug_csv(data,'orignal_data')
+                    weights = np.arange(1, window_size + 1)  # 生成遞增權重
+                    weights = weights / weights.sum()  # 標準化權重
+                    wma = np.convolve(data.to_numpy(), weights, mode='valid')
+                    print(f'[DEBUG] {type(wma)}\n{wma}')
+                    self.data_list[0][scale] = pd.Series(wma)
+                    self.Debug_csv(pd.Series(wma),'wma_data')
+                    #print(f"[orignal data] \n{data} 加權移動平均計算完成 {'-'*10}")
+                    print(f"[weighted_moving_average] \n{self.data_list[0][scale]} 加權移動平均計算完成")
+
+           
+    def Debug_csv(self,data,name):
+        df = pd.DataFrame(data)
+        df.to_csv(f'{name}.csv', index=False, encoding='utf-8-sig')

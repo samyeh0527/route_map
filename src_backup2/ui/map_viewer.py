@@ -2,8 +2,9 @@
 
 from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QPushButton, QFileDialog,
-    QHBoxLayout, QLabel, QSpinBox, QMessageBox, QApplication, QListWidget, QListWidgetItem, QToolBar
+    QHBoxLayout, QLabel, QSpinBox, QMessageBox, QApplication, QListWidget, QListWidgetItem, QToolBar,QComboBox
 )
+
 from PyQt5.QtGui import QIcon
 from PyQt5.QtCore import Qt, QTimer
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
@@ -53,7 +54,8 @@ class MapViewer(QMainWindow):
         self.set_start_button = QPushButton("設定起點")  # 在這裡創建按鈕
         self.update_button = QPushButton("更新圖表")
         self.switch_lap_button = QPushButton("繪製單圈與重製單圈")
-        
+        self.standard_deviation_button = QPushButton("Scale標準差")
+
         # 設置UI
         self._init_ui()
         
@@ -62,7 +64,8 @@ class MapViewer(QMainWindow):
         self.set_start_button.clicked.connect(self.start_setting_start_point)
         self.update_button.clicked.connect(self.update_data_range)
         self.switch_lap_button.clicked.connect(self.switch_lap)
-        
+        self.standard_deviation_button.clicked.connect(self.standard_deviation_button_clicked)
+        # self.combo_box.currentIndexChanged.connect(self.update_label)
         print("初始化完成：按鈕信號已連接")
 
         # 創建圖表管理器並設置回調
@@ -125,8 +128,10 @@ class MapViewer(QMainWindow):
         for button in [self.load_button, self.set_start_button, self.update_button, self.switch_lap_button]:
             button.setStyleSheet(button_style)
             top_button_layout.addWidget(button)
-        top_button_layout.addStretch()
         
+        top_button_layout.addStretch()  # 添加彈性空間，將 combo_box 推到右側
+        self.standard_deviation_button.setStyleSheet(button_style)
+        top_button_layout.addWidget(self.standard_deviation_button, alignment=Qt.AlignRight)  # 確保 combo_box 靠右對齊
         main_layout.addLayout(top_button_layout)
         
         # 創建主圖表容器
@@ -908,6 +913,7 @@ class MapViewer(QMainWindow):
     def update_data_list(self, new_data_list):
         """更新數據列表"""
         try:
+            print(f"[DEBUG] Function name: update_data_list")
             # 清除所有標記
             self.plot_manager.clear_all_markers()
             
@@ -937,6 +943,9 @@ class MapViewer(QMainWindow):
                 print("沒有保存的初始視圖範圍")
         except Exception as e:
             print(f"重置視圖時出錯: {str(e)}")
+    def update_label(self):
+        selected_number = self.combo_box.currentText()
+        print(f'[DEBUG] 選擇的數字: {selected_number}')
 
     def switch_lap(self):
         """切換單圈功能"""
@@ -989,6 +998,55 @@ class MapViewer(QMainWindow):
             traceback.print_exc()
             QMessageBox.critical(self, "錯誤", f"切換單圈時出錯：{str(e)}")
 
+    def standard_deviation_button_clicked(self):
+        # 創建新的視窗
+        self.popup_window = QWidget()
+        self.popup_window.setWindowTitle("選擇數字")
+        self.popup_window.setGeometry(100, 100, 250, 50)
+
+        # 設置垂直布局
+        layout = QVBoxLayout(self.popup_window)
+
+        # 添加標籤
+        label = QLabel("請選擇一個數字:")
+        layout.addWidget(label)
+
+        # 添加下拉選單
+        self.combo_box = QComboBox()
+        numbers = [str(i) for i in range(0,15)]  # 產生 0~10 的數字選項
+        self.combo_box.addItems(numbers)
+
+        # 設置先前選擇的數值或預設為 0
+        if hasattr(self, 'selected_number'):
+            self.combo_box.setCurrentText(str(self.selected_number))
+        else:
+            self.combo_box.setCurrentIndex(0)
+
+        layout.addWidget(self.combo_box)
+
+        # 添加確認按鈕
+        confirm_button = QPushButton("確認")
+        confirm_button.clicked.connect(self._confirm_selection)
+        layout.addWidget(confirm_button)
+
+        # 顯示視窗
+        self.popup_window.show()
+
+    def _confirm_selection(self):
+
+        # 儲存選擇的數值
+        self.selected_number = int(self.combo_box.currentText())
+        print(f'[DEBUG] 選擇的數字: {self.selected_number}')
+        self.apply_wma()
+
+        # 關閉視窗
+        self.popup_window.close()
+
+    def apply_wma(self):
+        # 計算 WMA
+        self.plot_manager.weighted_moving_average(self.selected_number)
+        self.weighted_moving_average_size = self.selected_number
+        #寫入 windowsize to plot_manager
     def _update_track_ax(self):
         """更新軌跡圖"""
         self.plot_track()   
