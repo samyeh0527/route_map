@@ -1743,7 +1743,7 @@ class PlotManager:
             
         if pending_data is not None:
             try:
-                for scale in ['R Scale 1', 'R Scale 2', 'G Speed']:
+                for scale in ['R Scale 1', 'R Scale 2']:
                     if scale in pending_data.columns:
                         self.Debug_csv(pending_data[scale],'orignal_data'+scale)
                         series = pending_data[scale].to_numpy()
