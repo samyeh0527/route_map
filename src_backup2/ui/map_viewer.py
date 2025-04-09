@@ -54,7 +54,7 @@ class MapViewer(QMainWindow):
         self.set_start_button = QPushButton("設定起點")  # 在這裡創建按鈕
         self.update_button = QPushButton("更新圖表")
         self.switch_lap_button = QPushButton("繪製單圈與重製單圈")
-        self.standard_deviation_button = QPushButton("Scale標準差")
+        self.standard_deviation_button = QPushButton("WMA濾波")
 
         # 設置UI
         self._init_ui()
@@ -76,7 +76,7 @@ class MapViewer(QMainWindow):
         # 設置 check_list 的選取模式
         self.check_list.setSelectionMode(QListWidget.NoSelection)  # 禁用選取反白
         self.check_list.setFocusPolicy(Qt.NoFocus)  # 禁用焦點顯示
-        
+        self.selected_number = 0  # 初始化選取數量為0
         # 設置樣式表，移除選取時的背景色
         self.check_list.setStyleSheet("""
             QListWidget::item {
@@ -920,7 +920,6 @@ class MapViewer(QMainWindow):
             # 更新數據列表
             self.plot_manager.data_list = new_data_list
             self.plot_manager.create_plots()
-            
             # 重繪圖表
             self.canvas.draw()
             self.track_canvas.draw()
@@ -944,8 +943,8 @@ class MapViewer(QMainWindow):
         except Exception as e:
             print(f"重置視圖時出錯: {str(e)}")
     def update_label(self):
-        selected_number = self.combo_box.currentText()
-        print(f'[DEBUG] 選擇的數字: {selected_number}')
+        self.selected_number = self.combo_box.currentText()
+        print(f'[DEBUG] 選擇的數字: {self.selected_numbe}')
 
     def switch_lap(self):
         """切換單圈功能"""
@@ -1013,7 +1012,7 @@ class MapViewer(QMainWindow):
 
         # 添加下拉選單
         self.combo_box = QComboBox()
-        numbers = [str(i) for i in range(0,15)]  # 產生 0~10 的數字選項
+        numbers = [str(i) for i in range(0,101)]  # 產生 0~10 的數字選項
         self.combo_box.addItems(numbers)
 
         # 設置先前選擇的數值或預設為 0
@@ -1036,6 +1035,7 @@ class MapViewer(QMainWindow):
 
         # 儲存選擇的數值
         self.selected_number = int(self.combo_box.currentText())
+        self.plot_manager.set_combo_selection(self.selected_number)
         print(f'[DEBUG] 選擇的數字: {self.selected_number}')
         self.apply_wma()
 
@@ -1044,8 +1044,7 @@ class MapViewer(QMainWindow):
 
     def apply_wma(self):
         # 計算 WMA
-        self.plot_manager.weighted_moving_average(self.selected_number)
-        self.weighted_moving_average_size = self.selected_number
+        self.plot_manager.weighted_moving_average(window_size=self.selected_number)
         #寫入 windowsize to plot_manager
     def _update_track_ax(self):
         """更新軌跡圖"""

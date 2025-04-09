@@ -6,6 +6,8 @@ import matplotlib as mpl
 import pandas as pd
 from PyQt5.QtWidgets import QApplication, QProgressDialog, QMessageBox
 from PyQt5.QtCore import Qt
+
+
 class PlotManager:
     """圖表管理器"""
     def __init__(self, figure):
@@ -17,7 +19,6 @@ class PlotManager:
         mpl.rcParams['font.sans-serif'] = ['Microsoft YaHei', 'SimHei', 'Arial Unicode MS']
         mpl.rcParams['axes.unicode_minus'] = False
         mpl.rcParams['font.family'] = 'sans-serif'
-        self.weighted_moving_average_size = 0
         self.figure = figure
         self.data_list = []
         self.axes = {}
@@ -53,7 +54,8 @@ class PlotManager:
         self.figure.canvas.mpl_connect('button_press_event', self._FastDragPlot)
         self.figure.canvas.mpl_connect('motion_notify_event', self._FastDragPlot)
         self.figure.canvas.mpl_connect('button_release_event', self._FastDragPlot)
-
+        #透過函式參數傳入
+        self.combo_selection = None
 
     def create_plots(self, highlight_index=None, highlight_range=None):
         """創建圖表，支持高亮顯示"""
@@ -550,7 +552,7 @@ class PlotManager:
                 return
             
             data = self.combined_track_data
-            print(f"[_update_main_plots_with_reset_index] combined track data : \n{data}")
+            #print(f"[_update_main_plots_with_reset_index] combined track data : \n{data}")
             # 檢查索引是否在有效範圍內
             if index >= len(data):
                 print(f"警告：索引 {index} 超出範圍 (最大值: {len(data)-1})")
@@ -1472,7 +1474,7 @@ class PlotManager:
             print(f"[plot_selected_ranges] current_checked_items: {self.current_checked_items}")
             
             print("\n=== 重新編排索引後的Run詳細資料 ===")
-            
+
             # 創建一個字典來存儲每個Run的索引映射
             self.range_index_mapping = {}
             current_index = 0
@@ -1500,15 +1502,18 @@ class PlotManager:
                 
                 current_index += range_length
 
-            # 創建組合數據
+            # 創建組合數據(但沒用到我懶得改了)
             self.combined_track_data = pd.DataFrame()
             for item_data in checked_items:
                 range_id = item_data['id']
                 start_idx = int(item_data['description'].split(',')[0].split(':')[1])
                 end_idx = int(item_data['description'].split(',')[1].split(':')[1])
                 range_data = full_data.iloc[start_idx:end_idx+1].copy()
+                #print(f"[plot_selected_ranges] 單獨數據:\n{range_data}\n{type(range_data)}")
+                if self.combo_selection is not None:
+                    print(f'[DEBIG] : 使用加權移動平均，大小: {self.combo_selection}')
+                    range_data = self.weighted_moving_average(window_size=int(self.combo_selection),pending_data=range_data)
                 self.combined_track_data = pd.concat([self.combined_track_data, range_data], ignore_index=True)
-
             # 原有的圖表繪製代碼保持不變
             self.figure.clear()
             
@@ -1550,10 +1555,11 @@ class PlotManager:
                         # 獲取該範圍的數據並重設索引
                         range_data = full_data.iloc[start_idx:end_idx+1].copy()
                         range_data.reset_index(drop=True, inplace=True)
+                        if self.combo_selection is not None:
+                            print(f'[DEBIG] : 使用加權移動平均，大小: {self.combo_selection}')
+                            range_data = self.weighted_moving_average(window_size=int(self.combo_selection),pending_data=range_data)
                         # print(f"[plot_selected_ranges] range_data: \n{range_data}")
                         # 在主圖表上繪製（使用重設後的索引和自定義標籤）
-                        if self.weighted_moving_average_size > 0:
-                             self.weighted_moving_average(self.weighted_moving_average_size,range_data)
 
                         ax.plot(range_data.index, 
                                range_data[col_name], 
@@ -1735,37 +1741,31 @@ class PlotManager:
             msg_box.exec_()
             return None
             
-        if window_size <= 0:
-            print("警告：窗口大小必須大於0")
-            return None
-        elif pending_data is not None:
-            for scale in ['R Scale 1', 'R Scale 2']:
-                if scale in pending_data[0].columns:
-                    data = pending_data[0][scale]
-                    self.Debug_csv(data,'orignal_data')
-                    weights = np.arange(1, window_size + 1)  # 生成遞增權重
-                    weights = weights / weights.sum()  # 標準化權重
-                    wma = np.convolve(data.to_numpy(), weights, mode='valid')
-                    print(f'[DEBUG] {type(wma)}\n{wma}')
-                    pending_data[0][scale] = pd.Series(wma)
-                    self.Debug_csv(pd.Series(wma),'wma_data')  
-                    print(f"[weighted_moving_average] \n{self.data_list[0][scale]} 加權移動平均計算完成")
-        else:
-            for scale in ['R Scale 1', 'R Scale 2']:
-                if scale in self.data_list[0].columns:
-                    data = self.data_list[0][scale]
-                    #test use
-                    self.Debug_csv(data,'orignal_data')
-                    weights = np.arange(1, window_size + 1)  # 生成遞增權重
-                    weights = weights / weights.sum()  # 標準化權重
-                    wma = np.convolve(data.to_numpy(), weights, mode='valid')
-                    print(f'[DEBUG] {type(wma)}\n{wma}')
-                    self.data_list[0][scale] = pd.Series(wma)
-                    self.Debug_csv(pd.Series(wma),'wma_data')
-                    #print(f"[orignal data] \n{data} 加權移動平均計算完成 {'-'*10}")
-                    print(f"[weighted_moving_average] \n{self.data_list[0][scale]} 加權移動平均計算完成")
+        if pending_data is not None:
+            try:
+                for scale in ['R Scale 1', 'R Scale 2', 'G Speed']:
+                    if scale in pending_data.columns:
+                        self.Debug_csv(pending_data[scale],'orignal_data'+scale)
+                        series = pending_data[scale].to_numpy()
+                        weights = np.arange(1, window_size + 1)
+                        wma = np.convolve(series, weights[::-1], mode='valid') / weights.sum()
+                        self.Debug_csv(wma,'wma_data'+scale)
+                        print("[DEBUG]", type(wma))  # numpy.ndarray
+                        # 修正資料長度對齊
+                        pending_data = pending_data.iloc[len(pending_data) - len(wma):].copy()
+                        pending_data[scale] = wma
+                        self.Debug_csv(pending_data[scale],'wma_data'+scale)
+                return pending_data
+            except Exception as e:
+                print(f"[WMA] 計算錯誤: {e}")
+                return pending_data
 
+
+    def set_combo_selection(self, selection):
+        self.combo_selection = selection
            
     def Debug_csv(self,data,name):
         df = pd.DataFrame(data)
         df.to_csv(f'{name}.csv', index=False, encoding='utf-8-sig')
+    
+    
