@@ -1503,17 +1503,16 @@ class PlotManager:
                 current_index += range_length
 
             # 創建組合數據(但沒用到我懶得改了)
-            self.combined_track_data = pd.DataFrame()
-            for item_data in checked_items:
-                range_id = item_data['id']
-                start_idx = int(item_data['description'].split(',')[0].split(':')[1])
-                end_idx = int(item_data['description'].split(',')[1].split(':')[1])
-                range_data = full_data.iloc[start_idx:end_idx+1].copy()
-                #print(f"[plot_selected_ranges] 單獨數據:\n{range_data}\n{type(range_data)}")
-                if self.combo_selection is not None:
-                    print(f'[DEBIG] : 使用加權移動平均，大小: {self.combo_selection}')
-                    range_data = self.weighted_moving_average(window_size=int(self.combo_selection),pending_data=range_data)
-                self.combined_track_data = pd.concat([self.combined_track_data, range_data], ignore_index=True)
+            #.combined_track_data = pd.DataFrame()
+            # for item_data in checked_items:
+            #     range_id = item_data['id']
+            #     start_idx = int(item_data['description'].split(',')[0].split(':')[1])
+            #     end_idx = int(item_data['description'].split(',')[1].split(':')[1])
+                #range_data = full_data.iloc[start_idx:end_idx+1].copy()
+                # if self.combo_selection is not None:
+                #     print(f'[DEBIG] : 使用加權移動平均，大小: {self.combo_selection}')
+                #     range_data = self.weighted_moving_average(window_size=int(self.combo_selection),pending_data=range_data)
+                # self.combined_track_data = pd.concat([self.combined_track_data, range_data], ignore_index=True)
             # 原有的圖表繪製代碼保持不變
             self.figure.clear()
             
