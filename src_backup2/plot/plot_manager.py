@@ -1479,40 +1479,41 @@ class PlotManager:
             self.range_index_mapping = {}
             current_index = 0
             
-            # 為每個Run創建索引映射
-            for item_data in checked_items:
-                description = item_data['description']
-                range_id = item_data['id']
-                start_idx = int(description.split(',')[0].split(':')[1])
-                end_idx = int(description.split(',')[1].split(':')[1])
-                range_length = end_idx - start_idx + 1
-                
-                # 存儲該Run的索引範圍
-                self.range_index_mapping[range_id] = {
-                    'start': current_index,
-                    'end': current_index + range_length - 1,
-                    'original_start': start_idx,
-                    'original_end': end_idx
-                }
-                
-                print(f"\nRun {range_id}:")
-                print(f"原始索引範圍: {start_idx} 到 {end_idx}")
-                print(f"重設後索引範圍: {current_index} 到 {current_index + range_length - 1}")
-                print(f"資料筆數: {range_length}")
-                
-                current_index += range_length
-
-            # 創建組合數據(但沒用到我懶得改了)
-            #.combined_track_data = pd.DataFrame()
+            # # 為每個Run創建索引映射
             # for item_data in checked_items:
+            #     description = item_data['description']
             #     range_id = item_data['id']
-            #     start_idx = int(item_data['description'].split(',')[0].split(':')[1])
-            #     end_idx = int(item_data['description'].split(',')[1].split(':')[1])
-                #range_data = full_data.iloc[start_idx:end_idx+1].copy()
-                # if self.combo_selection is not None:
-                #     print(f'[DEBIG] : 使用加權移動平均，大小: {self.combo_selection}')
-                #     range_data = self.weighted_moving_average(window_size=int(self.combo_selection),pending_data=range_data)
-                # self.combined_track_data = pd.concat([self.combined_track_data, range_data], ignore_index=True)
+            #     start_idx = int(description.split(',')[0].split(':')[1])
+            #     end_idx = int(description.split(',')[1].split(':')[1])
+            #     range_length = end_idx - start_idx + 1
+                
+            #     # 存儲該Run的索引範圍
+            #     self.range_index_mapping[range_id] = {
+            #         'start': current_index,
+            #         'end': current_index + range_length - 1,
+            #         'original_start': start_idx,
+            #         'original_end': end_idx
+            #     }
+                
+            #     print(f"\nRun {range_id}:")
+            #     print(f"原始索引範圍: {start_idx} 到 {end_idx}")
+            #     print(f"重設後索引範圍: {current_index} 到 {current_index + range_length - 1}")
+            #     print(f"資料筆數: {range_length}")
+                
+            #     current_index += range_length
+            # 封裝所有範圍資料
+            range_info_list = self.extract_range_data(checked_items, full_data)
+
+            # 更新 range_index_mapping
+            self.range_index_mapping = {}
+            for info in range_info_list:
+                self.range_index_mapping[info['range_id']] = {
+                    'start': info['remapped_range'][0],
+                    'end': info['remapped_range'][1],
+                    'original_start': info['original_range'][0],
+                    'original_end': info['original_range'][1],
+                }
+
             # 原有的圖表繪製代碼保持不變
             self.figure.clear()
             
@@ -1540,42 +1541,55 @@ class PlotManager:
             # 為每個勾選的範圍繪製對應的圖表
             for ax_name, (col_name, ax) in plot_config.items():
                 if col_name in full_data.columns:
-                    for item_data in checked_items:
-                        label_name = item_data.get('label', '')
-                        print(f"[plot_selected_ranges] 處理項目，label_name: {label_name}")
-                        description = item_data['description']
-                        range_id = item_data['id']
-                        # 獲取標籤名稱，如果沒有則使用預設的 Run {range_id}
-                        label_name = item_data.get('label', f'Run {range_id}')
-                        
-                        start_idx = int(description.split(',')[0].split(':')[1])
-                        end_idx = int(description.split(',')[1].split(':')[1])
-                        
-                        # 獲取該範圍的數據並重設索引
-                        range_data = full_data.iloc[start_idx:end_idx+1].copy()
-                        range_data.reset_index(drop=True, inplace=True)
-                        if self.combo_selection is not None:
-                            print(f'[DEBIG] : 使用加權移動平均，大小: {self.combo_selection}')
-                            range_data = self.weighted_moving_average(window_size=int(self.combo_selection),pending_data=range_data)
-                        # print(f"[plot_selected_ranges] range_data: \n{range_data}")
-                        # 在主圖表上繪製（使用重設後的索引和自定義標籤）
 
-                        ax.plot(range_data.index, 
-                               range_data[col_name], 
-                               '-', 
-                               linewidth=1, 
-                               label=label_name)
+                    # for item_data in checked_items:
+                    #     label_name = item_data.get('label', '')
+                    #     print(f"[plot_selected_ranges] 處理項目，label_name: {label_name}")
+                    #     description = item_data['description']
+                    #     range_id = item_data['id']
+                    #     # 獲取標籤名稱，如果沒有則使用預設的 Run {range_id}
+                    #     label_name = item_data.get('label', f'Run {range_id}')
                         
-                        # 在選中範圍的圖表上繪製（使用相同的重設索引和自定義標籤）
+                    #     start_idx = int(description.split(',')[0].split(':')[1])
+                    #     end_idx = int(description.split(',')[1].split(':')[1])
+                        
+                    #     # 獲取該範圍的數據並重設索引
+                    #     range_data = full_data.iloc[start_idx:end_idx+1].copy()
+                    #     range_data.reset_index(drop=True, inplace=True)
+                    #     if self.combo_selection is not None:
+                    #         print(f'[DEBIG] : 使用加權移動平均，大小: {self.combo_selection}')
+                    #         range_data = self.weighted_moving_average(window_size=int(self.combo_selection),pending_data=range_data)
+                    #     # print(f"[plot_selected_ranges] range_data: \n{range_data}")
+                    #     # 在主圖表上繪製（使用重設後的索引和自定義標籤）
+
+                    #     ax.plot(range_data.index, 
+                    #            range_data[col_name], 
+                    #            '-', 
+                    #            linewidth=1, 
+                    #            label=label_name)
+                        
+                    #     # 在選中範圍的圖表上繪製（使用相同的重設索引和自定義標籤）
+                    #     selected_ax = axes[list(plot_config.keys()).index(ax_name)]
+                    #     line = selected_ax.plot(
+                    #         range_data.index,
+                    #         range_data[col_name],
+                    #         '-',
+                    #         linewidth=1,
+                    #         label=label_name
+                    #     )[0]
+                    #     print(f"[plot_selected_ranges] 添加選中範圍的線，label_name: {label_name}")
+                    
+                    for info in range_info_list:
+                        df = info['data']
+                        label_name = info['label']
+                        range_id = info['range_id']
+
+                        ax.plot(df.index, df[col_name], '-', linewidth=1, label=label_name)
+
                         selected_ax = axes[list(plot_config.keys()).index(ax_name)]
-                        line = selected_ax.plot(
-                            range_data.index,
-                            range_data[col_name],
-                            '-',
-                            linewidth=1,
-                            label=label_name
-                        )[0]
-                        print(f"[plot_selected_ranges] 添加選中範圍的線，label_name: {label_name}")
+                        selected_ax.plot(df.index, df[col_name], '-', linewidth=1, label=label_name)
+
+                    
                     # 設置主圖表屬性
                     ax.set_title(col_name, 
                                fontsize=7,
@@ -1623,6 +1637,43 @@ class PlotManager:
             import traceback
             traceback.print_exc()
             return False
+
+    def extract_range_data(self, checked_items, full_data):
+        """將每個範圍資料與索引包裝成模組化結構"""
+        print(f"[DEBUG] [extract_range_data] checked_items: {checked_items}")
+        packaged_ranges = []
+        current_index = 0
+
+        for item in checked_items:
+            description = item['description']
+            range_id = item['id']
+            label = item.get('label', f'Run {range_id}')
+            start_idx = int(description.split(',')[0].split(':')[1])
+            end_idx = int(description.split(',')[1].split(':')[1])
+            range_length = end_idx - start_idx + 1
+
+            # 擷取並重設索引
+            df = full_data.iloc[start_idx:end_idx+1].copy()
+            df.reset_index(drop=True, inplace=True)
+
+            # 移動平均
+            if self.combo_selection is not None:
+                df = self.weighted_moving_average(window_size=int(self.combo_selection), pending_data=df)
+
+            # 儲存封裝資訊
+            packaged_ranges.append({
+                'range_id': range_id,
+                'label': label,
+                'original_range': (start_idx, end_idx),
+                'remapped_range': (current_index, current_index + range_length - 1),
+                'data': df
+            })
+
+            current_index += range_length
+        print(f"[DEBUG] [extract_range_data] packaged_ranges: {packaged_ranges}")
+        return packaged_ranges
+
+
 
     def plot_track_for_ranges(self, checked_items, full_data, track_ax, track_canvas):
         """繪製軌跡圖"""
