@@ -55,6 +55,8 @@ class MapViewer(QMainWindow):
         self.update_button = QPushButton("更新圖表")
         self.switch_lap_button = QPushButton("繪製單圈與重製單圈")
         self.standard_deviation_button = QPushButton("WMA濾波")
+        self.load_multiple_button = QPushButton("載入多個CSV")
+        
 
         # 設置UI
         self._init_ui()
@@ -65,6 +67,7 @@ class MapViewer(QMainWindow):
         self.update_button.clicked.connect(self.update_data_range)
         self.switch_lap_button.clicked.connect(self.switch_lap)
         self.standard_deviation_button.clicked.connect(self.standard_deviation_button_clicked)
+        self.load_multiple_button.clicked.connect(self.load_multiple_csv)
         # self.combo_box.currentIndexChanged.connect(self.update_label)
         print("初始化完成：按鈕信號已連接")
 
@@ -104,7 +107,6 @@ class MapViewer(QMainWindow):
         
         # 創建頂部按鈕區域
         top_button_layout = QHBoxLayout()
-        
         # 設置按鈕樣式
         button_style = """
             QPushButton {
@@ -125,7 +127,7 @@ class MapViewer(QMainWindow):
         """
         
         # 添加按鈕到頂部布局
-        for button in [self.load_button, self.set_start_button, self.update_button, self.switch_lap_button]:
+        for button in [self.load_button,self.load_multiple_button,self.set_start_button, self.update_button, self.switch_lap_button]:
             button.setStyleSheet(button_style)
             top_button_layout.addWidget(button)
         
@@ -665,12 +667,7 @@ class MapViewer(QMainWindow):
             print(f"文件路徑: {file_path}")
             
             # 讀取 CSV 文件
-            #self.full_data = pd.read_csv(file_path)
-            try:
-                self.full_data = pd.read_csv(file_path, encoding="utf-8")
-            except UnicodeDecodeError:
-                self.full_data = pd.read_csv(file_path, encoding="gbk")  # 嘗試 GBK
-
+            self.full_data = self.read_csv_safe(file_path)
             # 檢查數據是否包含 X-Y 或 Longitude-Latitude
             if not {'X', 'Y'}.issubset(self.full_data.columns) and not {'Longitude', 'Latitude'}.issubset(self.full_data.columns):
                 QMessageBox.critical(self, "錯誤", "CSV 文件缺少必要的座標欄位 (X, Y 或 Longitude, Latitude)")
@@ -1135,3 +1132,59 @@ class MapViewer(QMainWindow):
         self.track_ax.set_ylim(y_min, y_max)
 
         self.track_canvas.draw()
+    def load_multiple_csv(self):
+        """一次載入多個 CSV 檔案"""
+        try:
+            file_paths, _ = QFileDialog.getOpenFileNames(
+                self,
+                "選擇多個 CSV 文件",
+                "",
+                "CSV 文件 (*.csv);;所有文件 (*.*)"
+            )
+            
+            if not file_paths:
+                return
+            
+            print(f"選取了 {len(file_paths)} 個文件：")
+            for path in file_paths:
+                print(f" - {path}")
+
+            all_data = []
+            for path in file_paths:
+                data = self.read_csv_safe(path)
+                all_data.append(data)
+            
+            self.full_data = pd.concat(all_data, ignore_index=True)
+
+            print(f"總共合併了 {len(self.full_data)} 筆資料")
+
+            # 更新圖表
+            self.plot_manager.data_list = [self.full_data]
+            self.plot_manager.create_plots()
+            self.canvas.draw()
+
+            # 更新軌跡圖
+            self.plot_track()
+
+            # 保存初始視圖範圍
+            self.track_home_limits = {
+                'xlim': self.track_ax.get_xlim(),
+                'ylim': self.track_ax.get_ylim(),
+                'aspect': self.track_ax.get_aspect()
+            }
+
+            self.track_canvas.draw()
+            print("多檔案載入與圖表更新完成")
+
+        except Exception as e:
+            print(f"載入多檔 CSV 時出錯: {str(e)}")
+            QMessageBox.critical(self, "錯誤", f"無法載入文件：{str(e)}")
+
+
+    @staticmethod
+    def read_csv_safe(path):
+        """安全讀取 CSV，嘗試 utf-8 和 gbk 編碼"""
+        try:
+            return pd.read_csv(path, encoding="utf-8")
+        except UnicodeDecodeError:
+            return pd.read_csv(path, encoding="gbk")
