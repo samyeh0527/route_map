@@ -553,8 +553,13 @@ class MapViewer(QMainWindow):
     def update_data_range(self):
         """更新數據範圍"""
         try:
-            if not hasattr(self, 'full_data'):
-                print("錯誤：沒有載入數據")
+            if hasattr(self, 'full_data_list') and self.full_data_list:
+                print(f"full_data_list數據長度: {len(self.full_data_list)} , {type(self.full_data_list)}")
+                data_for_update = pd.concat(self.full_data_list, ignore_index=True)
+            elif hasattr(self, 'full_data') and isinstance(self.full_data, pd.DataFrame):
+                data_for_update = self.full_data
+                print(f"full_data數據長度: {len(data_for_update)} , {type(data_for_update)}")
+            else:
                 QMessageBox.warning(self, "警告", "請先載入數據")
                 return
             
@@ -570,8 +575,9 @@ class MapViewer(QMainWindow):
             self.check_list.clear()
             
             # 更新圖表
-            self.plot_manager.data_list = [self.full_data]  # 使用完整數據
+            self.plot_manager.data_list = [data_for_update]  # ✅ 確保是一個 list of DataFrame
             self.plot_manager.create_plots()
+            self.canvas.draw()
             
             # 確保重新繪製所有圖表
             self.canvas.draw()
@@ -682,6 +688,9 @@ class MapViewer(QMainWindow):
             # 更新位置軌跡圖（底部右方）
             self.plot_track()
             
+            #清除多圖表資料
+            self.full_data_list = None
+
             # 保存初始視圖狀態
             self.track_home_limits = {
                 'xlim': self.track_ax.get_xlim(),
@@ -1045,45 +1054,13 @@ class MapViewer(QMainWindow):
         #寫入 windowsize to plot_manager
     def _update_track_ax(self):
         """更新軌跡圖"""
-        self.plot_track()   
-
-    def plot_track2(self):
-        """繪製位置軌跡圖"""
-        self.track_ax.clear()
-        
-        if 'X' in self.full_data.columns and 'Y' in self.full_data.columns:
-            print("繪製位置軌跡圖 (X-Y)")
-            x_data, y_data = self.full_data['X'], self.full_data['Y']
-            x_label, y_label = 'X', 'Y'
-        elif 'Longitude' in self.full_data.columns and 'Latitude' in self.full_data.columns:
-            print("繪製位置軌跡圖 (經緯度)")
-            x_data, y_data = self.full_data['Longitude'], self.full_data['Latitude']
-            x_label, y_label = '經度', '緯度'
-        else:
-            print("數據中無法找到合適的 X-Y 或 經緯度 列")
-            return  # 若無合適數據則不繪製
-
-        # 繪製軌跡圖
-        self.track_ax.plot(x_data, y_data, 'b-', linewidth=1.5, zorder=1)
-        self.track_ax.set_xlabel(x_label, fontsize=10)
-        self.track_ax.set_ylabel(y_label, fontsize=10)
-        self.track_ax.set_title("位置軌跡圖", fontsize=8)
-        self.track_ax.grid(True)
-        self.track_ax.set_aspect('equal', adjustable='datalim')
-
-        # 設置適當的邊距
-        x_min, x_max = x_data.min(), x_data.max()
-        y_min, y_max = y_data.min(), y_data.max()
-        margin_x = (x_max - x_min) * 0.1
-        margin_y = (y_max - y_min) * 0.1
-
-        # 設置軸範圍
-        self.track_ax.set_xlim(x_min - margin_x, x_max + margin_x)
-        self.track_ax.set_ylim(y_min - margin_y, y_max + margin_y)
-        
-        self.track_canvas.draw()
-
+        if hasattr(self, 'full_data_list') and self.full_data_list:
+            self.plot_track_mulit()   
+        elif hasattr(self, 'full_data'):
+            self.plot_track()   
+            
     def plot_track(self):
+        #可刪除
         """繪製位置軌跡圖"""
         self.track_ax.clear()
 
@@ -1133,26 +1110,43 @@ class MapViewer(QMainWindow):
 
         self.track_canvas.draw()
     def plot_track_mulit(self):
-        if not hasattr(self, 'full_data_list') or not self.full_data_list:
-            print("No merged data to plot.")
+        """繪製位置軌跡圖，支援多筆資料 (self.full_data_list) 或單筆 (self.full_data)"""
+        self.track_ax.clear()
+
+        data_sources = []
+        if hasattr(self, 'full_data_list') and self.full_data_list:
+            data_sources = self.full_data_list
+            print("從多筆資料中繪製軌跡圖")
+        elif hasattr(self, 'full_data'):
+            data_sources = [self.full_data]
+            print("從單筆資料中繪製軌跡圖")
+        else:
+            print("無資料可繪製")
             return
 
-        # 假設 self.full_data_list 是 list of lists，裡面是 [lat, lon, ...]
-        all_lats = []
-        all_lons = []
+        colors = ['b', 'g', 'r', 'c', 'm', 'y', 'k']  # 顏色循環使用
+        for idx, df in enumerate(data_sources):
+            if 'X' in df.columns and 'Y' in df.columns:
+                x_data, y_data = df['X'].dropna(), df['Y'].dropna()
+                x_label, y_label = 'X', 'Y'
+            elif 'Longitude' in df.columns and 'Latitude' in df.columns:
+                x_data, y_data = df['Longitude'].dropna(), df['Latitude'].dropna()
+                x_label, y_label = '經度', '緯度'
+            else:
+                print(f"第 {idx+1} 筆資料缺少必要欄位，跳過")
+                continue
 
-        for data in self.full_data_list:
-            lats = [point['lat'] for point in data if 'lat' in point and 'lon' in point]
-            lons = [point['lon'] for point in data if 'lat' in point and 'lon' in point]
-            all_lats.extend(lats)
-            all_lons.extend(lons)
+            color = colors[idx % len(colors)]
+            self.track_ax.plot(x_data, y_data, linestyle='-', linewidth=1.5, color=color, label=f'軌跡 {idx+1}')
 
-        if not all_lats or not all_lons:
-            print("No valid GPS data found.")
-            return
+        self.track_ax.set_xlabel(x_label, fontsize=10)
+        self.track_ax.set_ylabel(y_label, fontsize=10)
+        self.track_ax.set_title("多筆軌跡圖", fontsize=8)
+        self.track_ax.grid(True)
+        self.track_ax.set_aspect('equal', adjustable='datalim')
+        self.track_ax.legend(fontsize=8)
 
-        self.ax.plot(all_lons, all_lats, marker='o', linestyle='-', color='blue')
-        self.canvas.draw()
+        self.track_canvas.draw()
 
     def load_multiple_csv(self):
         """一次載入多個 CSV 檔案，並允許後續刪除"""
