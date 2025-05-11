@@ -163,8 +163,8 @@ class PlotManager:
         """繪製數據到指定的軸"""
         try:
             # 如果沒有數據,清除標題plot_selected_ranges
-            if not self.data_list:
-                ax.set_title("")
+            if not self.data_list or all(df.empty for df in self.data_list):
+                print("沒有有效資料可繪圖")
                 return
                 
             for i, data in enumerate(self.data_list):

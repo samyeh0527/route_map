@@ -555,13 +555,15 @@ class MapViewer(QMainWindow):
         try:
             if hasattr(self, 'full_data_list') and self.full_data_list:
                 print(f"full_data_list數據長度: {len(self.full_data_list)} , {type(self.full_data_list)}")
-                data_for_update = pd.concat(self.full_data_list, ignore_index=True)
+                data_for_update = data_list = [df for df in self.full_data_list if isinstance(df, pd.DataFrame)]
             elif hasattr(self, 'full_data') and isinstance(self.full_data, pd.DataFrame):
-                data_for_update = self.full_data
+                data_for_update = [self.full_data]
                 print(f"full_data數據長度: {len(data_for_update)} , {type(data_for_update)}")
             else:
                 QMessageBox.warning(self, "警告", "請先載入數據")
                 return
+            print("[DEBUG] data_list 內容類型：", [type(df) for df in data_for_update])
+            assert all(isinstance(df, pd.DataFrame) for df in data_for_update), "data_list 應包含 DataFrame"
             
             # 清除所有標示點
             if hasattr(self, 'track_point') and self.track_point:
@@ -575,15 +577,14 @@ class MapViewer(QMainWindow):
             self.check_list.clear()
             
             # 更新圖表
-            self.plot_manager.data_list = [data_for_update]  # ✅ 確保是一個 list of DataFrame
+            self.plot_manager.data_list = data_for_update  # ✅ 確保是一個 list of DataFrame
             self.plot_manager.create_plots()
-            self.canvas.draw()
             
             # 確保重新繪製所有圖表
             self.canvas.draw()
             self.track_canvas.draw()
             self._update_track_ax()
-            print("圖表更新完成")
+            print("圖表更新完成，資料筆數:", len(data_for_update))
             
         except Exception as e:
             print(f"更新圖表時出錯: {str(e)}")
@@ -686,7 +687,7 @@ class MapViewer(QMainWindow):
             self.canvas.draw()
             
             # 更新位置軌跡圖（底部右方）
-            self.plot_track()
+            self.plot_track_mulit()
             
             #清除多圖表資料
             self.full_data_list = None
