@@ -1132,8 +1132,30 @@ class MapViewer(QMainWindow):
         self.track_ax.set_ylim(y_min, y_max)
 
         self.track_canvas.draw()
+    def plot_track_mulit(self):
+        if not hasattr(self, 'full_data_list') or not self.full_data_list:
+            print("No merged data to plot.")
+            return
+
+        # 假設 self.full_data_list 是 list of lists，裡面是 [lat, lon, ...]
+        all_lats = []
+        all_lons = []
+
+        for data in self.full_data_list:
+            lats = [point['lat'] for point in data if 'lat' in point and 'lon' in point]
+            lons = [point['lon'] for point in data if 'lat' in point and 'lon' in point]
+            all_lats.extend(lats)
+            all_lons.extend(lons)
+
+        if not all_lats or not all_lons:
+            print("No valid GPS data found.")
+            return
+
+        self.ax.plot(all_lons, all_lats, marker='o', linestyle='-', color='blue')
+        self.canvas.draw()
+
     def load_multiple_csv(self):
-        """一次載入多個 CSV 檔案"""
+        """一次載入多個 CSV 檔案，並允許後續刪除"""
         try:
             file_paths, _ = QFileDialog.getOpenFileNames(
                 self,
@@ -1145,40 +1167,85 @@ class MapViewer(QMainWindow):
             if not file_paths:
                 return
             
-            print(f"選取了 {len(file_paths)} 個文件：")
-            for path in file_paths:
-                print(f" - {path}")
-
-            all_data = []
+            self.loaded_files = []  # 儲存 (路徑, DataFrame) 的 list
             for path in file_paths:
                 data = self.read_csv_safe(path)
-                all_data.append(data)
+                self.loaded_files.append((path, data))
             
-            self.full_data = pd.concat(all_data, ignore_index=True)
+            # 打開新視窗
+            self.file_manage_window = QWidget()
+            self.file_manage_window.setWindowTitle("管理已載入的 CSV 檔案")
+            self.file_manage_window.resize(400, 300)
+            
+            layout = QVBoxLayout(self.file_manage_window)
+            
+            self.file_list_widget = QListWidget()
+            for path, _ in self.loaded_files:
+                item = QListWidgetItem(path.split("/")[-1])  # 只顯示檔名
+                self.file_list_widget.addItem(item)
+            
+            layout.addWidget(self.file_list_widget)
+            
+            # 刪除按鈕
+            delete_button = QPushButton("刪除選擇的檔案")
+            delete_button.clicked.connect(self.delete_selected_file)
+            layout.addWidget(delete_button)
 
-            print(f"總共合併了 {len(self.full_data)} 筆資料")
-
-            # 更新圖表
-            self.plot_manager.data_list = [self.full_data]
-            self.plot_manager.create_plots()
-            self.canvas.draw()
-
-            # 更新軌跡圖
-            self.plot_track()
-
-            # 保存初始視圖範圍
-            self.track_home_limits = {
-                'xlim': self.track_ax.get_xlim(),
-                'ylim': self.track_ax.get_ylim(),
-                'aspect': self.track_ax.get_aspect()
-            }
-
-            self.track_canvas.draw()
-            print("多檔案載入與圖表更新完成")
+            # 確認按鈕
+            confirm_button = QPushButton("確認合併並繪製")
+            confirm_button.clicked.connect(self.confirm_merge_files)
+            layout.addWidget(confirm_button)
+            
+            self.file_manage_window.show()
 
         except Exception as e:
             print(f"載入多檔 CSV 時出錯: {str(e)}")
             QMessageBox.critical(self, "錯誤", f"無法載入文件：{str(e)}")
+
+
+    def delete_selected_file(self):
+        """從列表中刪除選擇的檔案"""
+        selected_items = self.file_list_widget.selectedItems()
+        if not selected_items:
+            return
+        for item in selected_items:
+            row = self.file_list_widget.row(item)
+            self.file_list_widget.takeItem(row)
+            del self.loaded_files[row]
+
+
+    def confirm_merge_files(self):
+        """確認合併剩餘檔案，更新畫面"""
+        if not self.loaded_files:
+            QMessageBox.warning(self, "警告", "沒有檔案可合併")
+            return
+
+        all_data = [data for _, data in self.loaded_files]
+        #self.full_data = pd.concat(all_data, ignore_index=True)
+        self.full_data_list = all_data
+        print(f"總共合併了 {len(self.full_data_list)} 筆資料")
+        self.full_data = self.full_data_list
+        # 更新主圖表
+        self.plot_manager.data_list = self.full_data_list
+        self.plot_manager.create_plots()
+        self.canvas.draw()
+
+        # 更新軌跡圖
+        self.plot_track_mulit()
+
+        # 保存初始視圖
+        self.track_home_limits = {
+            'xlim': self.track_ax.get_xlim(),
+            'ylim': self.track_ax.get_ylim(),
+            'aspect': self.track_ax.get_aspect()
+        }
+        self.track_canvas.draw()
+        print("多檔案合併完成並更新圖表")
+        
+        # 關閉管理視窗
+        self.file_manage_window.close()
+
+
 
 
     @staticmethod
