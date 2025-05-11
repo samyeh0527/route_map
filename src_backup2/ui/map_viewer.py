@@ -1054,13 +1054,13 @@ class MapViewer(QMainWindow):
         #寫入 windowsize to plot_manager
     def _update_track_ax(self):
         """更新軌跡圖"""
-        if hasattr(self, 'full_data_list') and self.full_data_list:
-            self.plot_track_mulit()   
-        elif hasattr(self, 'full_data'):
-            self.plot_track()   
-            
+        self.plot_track_mulit()
+        # if hasattr(self, 'full_data_list') and self.full_data_list:
+        #     self.plot_track_mulit()   
+        # elif hasattr(self, 'full_data'):
+        #     self.plot_track()   
+
     def plot_track(self):
-        #可刪除
         """繪製位置軌跡圖"""
         self.track_ax.clear()
 
