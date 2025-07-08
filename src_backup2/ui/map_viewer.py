@@ -805,6 +805,7 @@ class MapViewer(QMainWindow):
         # 委託 PlotManager 處理數據相關操作
         self.plot_manager.enable_start_point_selection()
 
+
     def _on_track_click(self, event): 
         """處理軌跡圖點擊事件"""
         if event.inaxes != self.track_ax or not hasattr(self, 'full_data'):
@@ -813,37 +814,55 @@ class MapViewer(QMainWindow):
         try:
             self.full_data_df_list = []  # 初始化為空列表
             
-            # 判斷是否為多筆資料（list 且長度 > 1）
-            use_data_list = False
             if isinstance(self.full_data, list):
                 if len(self.full_data) > 1:
                     self.full_data_df_list = [pd.DataFrame(d) for d in self.full_data]
-                    use_data_list = True
                 else:
                     self.full_data = pd.DataFrame(self.full_data[0])
             else:
                 self.full_data = pd.DataFrame(self.full_data)
 
-            # 找最近點
-            nearest_idx = self.plot_manager.find_nearest_point(event.xdata, event.ydata)
-            if nearest_idx is None:
+            click_x, click_y = event.xdata, event.ydata
+            if click_x is None or click_y is None:
+                print("無效點擊位置")
                 return
 
-            print(f'[DEBUG] nearest_idx: {nearest_idx}, type: {type(nearest_idx)}')
+            # 找出最近的點和所在的 DataFrame
+            nearest_idx = None
+            nearest_df = None
+            nearest_df_index = -1             
+            min_distance = float('inf')
 
-            # 根據資料來源決定要用哪個 DataFrame
-            if use_data_list:
-                # 目前簡化使用第 0 筆，必要時你可以自行根據其他資訊選擇哪一筆
-                active_df = self.full_data_df_list[0]
-            else:
-                active_df = self.full_data
+            if self.full_data_df_list:  # 多筆資料情況
+                for i, df in enumerate(self.full_data_df_list):  # 🔧 enumerate 可取得第幾個 df
+                    x_col = 'X' if 'X' in df.columns else 'Longitude'
+                    y_col = 'Y' if 'Y' in df.columns else 'Latitude'
 
-            print(f'[DEBUG] 使用資料: \n{active_df}\n[Type]: {type(active_df)}')
+                    distances = np.sqrt((df[x_col] - click_x) ** 2 + (df[y_col] - click_y) ** 2)
+                    idx_min = distances.idxmin()
+                    dist_min = distances.min()
 
-            x_col = 'X' if 'X' in active_df.columns else 'Longitude'
-            y_col = 'Y' if 'Y' in active_df.columns else 'Latitude'
-            x = active_df[x_col].iloc[nearest_idx]
-            y = active_df[y_col].iloc[nearest_idx]
+                    if dist_min < min_distance:
+                        min_distance = dist_min
+                        nearest_idx = idx_min
+                        nearest_df = df
+                        nearest_df_index = i     # 🔧 記住是第幾筆 df
+
+            else:  # 單筆資料情況
+                nearest_df = self.full_data
+                x_col = 'X' if 'X' in nearest_df.columns else 'Longitude'
+                y_col = 'Y' if 'Y' in nearest_df.columns else 'Latitude'
+                distances = np.sqrt((nearest_df[x_col] - click_x) ** 2 + (nearest_df[y_col] - click_y) ** 2)
+                nearest_idx = distances.idxmin()
+
+            if nearest_idx is None or nearest_df is None:
+                print("找不到最近點")
+                return
+
+            x_col = 'X' if 'X' in nearest_df.columns else 'Longitude'
+            y_col = 'Y' if 'Y' in nearest_df.columns else 'Latitude'
+            x = nearest_df[x_col].iloc[nearest_idx]
+            y = nearest_df[y_col].iloc[nearest_idx]
 
             if self.is_setting_start_point:
                 self.plot_manager.set_start_point(nearest_idx, self.track_ax, self.track_canvas)
@@ -857,7 +876,8 @@ class MapViewer(QMainWindow):
             print(f"索引: {nearest_idx}")
             print(f"經度: {x:.6f}")
             print(f"緯度: {y:.6f}")
-
+            if nearest_df_index >= 0:
+                print(f"點擊位置來自第 {nearest_df_index + 1} 筆路線資料")  # 🔧 人類習慣從1開始
         except Exception as e:
             print(f"處理軌跡圖點擊時出錯: {str(e)}")
             import traceback
