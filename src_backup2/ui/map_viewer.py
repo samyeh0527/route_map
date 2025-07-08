@@ -805,46 +805,64 @@ class MapViewer(QMainWindow):
         # 委託 PlotManager 處理數據相關操作
         self.plot_manager.enable_start_point_selection()
 
-    def _on_track_click(self, event):
+    def _on_track_click(self, event): 
         """處理軌跡圖點擊事件"""
         if event.inaxes != self.track_ax or not hasattr(self, 'full_data'):
             return
-        
+
         try:
-            # 委託 PlotManager 處理數據相關操作
+            self.full_data_df_list = []  # 初始化為空列表
+            
+            # 判斷是否為多筆資料（list 且長度 > 1）
+            use_data_list = False
+            if isinstance(self.full_data, list):
+                if len(self.full_data) > 1:
+                    self.full_data_df_list = [pd.DataFrame(d) for d in self.full_data]
+                    use_data_list = True
+                else:
+                    self.full_data = pd.DataFrame(self.full_data[0])
+            else:
+                self.full_data = pd.DataFrame(self.full_data)
+
+            # 找最近點
             nearest_idx = self.plot_manager.find_nearest_point(event.xdata, event.ydata)
             if nearest_idx is None:
                 return
-            
-            # 獲取點擊位置的經緯度
-            x_col = 'X' if 'X' in self.full_data.columns else 'Longitude'
-            y_col = 'Y' if 'Y' in self.full_data.columns else 'Latitude'
-            x = self.full_data[x_col].iloc[nearest_idx]
-            y = self.full_data[y_col].iloc[nearest_idx]
-            
+
+            print(f'[DEBUG] nearest_idx: {nearest_idx}, type: {type(nearest_idx)}')
+
+            # 根據資料來源決定要用哪個 DataFrame
+            if use_data_list:
+                # 目前簡化使用第 0 筆，必要時你可以自行根據其他資訊選擇哪一筆
+                active_df = self.full_data_df_list[0]
+            else:
+                active_df = self.full_data
+
+            print(f'[DEBUG] 使用資料: \n{active_df}\n[Type]: {type(active_df)}')
+
+            x_col = 'X' if 'X' in active_df.columns else 'Longitude'
+            y_col = 'Y' if 'Y' in active_df.columns else 'Latitude'
+            x = active_df[x_col].iloc[nearest_idx]
+            y = active_df[y_col].iloc[nearest_idx]
+
             if self.is_setting_start_point:
-                # 委託 PlotManager 處理數據相關操作
                 self.plot_manager.set_start_point(nearest_idx, self.track_ax, self.track_canvas)
-                # UI 狀態管理保留在 MapViewer
                 self.is_setting_start_point = False
                 self.set_start_button.setText("設定起點")
                 print(f"已在軌跡圖上設定起點:")
-                print(f"索引: {nearest_idx}")
-                print(f"經度: {x:.6f}")
-                print(f"緯度: {y:.6f}")
             else:
-                # 委託 PlotManager 處理數據相關操作
                 self.plot_manager.update_track_point(nearest_idx, self.track_ax, self.track_canvas)
                 print(f"已更新軌跡圖上的點 def name : _on_track_click ")
-                print(f"已更新顯示位置:")
-                print(f"索引: {nearest_idx}")
-                print(f"經度: {x:.6f}")
-                print(f"緯度: {y:.6f}")
+
+            print(f"索引: {nearest_idx}")
+            print(f"經度: {x:.6f}")
+            print(f"緯度: {y:.6f}")
 
         except Exception as e:
             print(f"處理軌跡圖點擊時出錯: {str(e)}")
             import traceback
             traceback.print_exc()
+
 
     def update_range_list(self, ranges):
         """更新範圍列表"""
