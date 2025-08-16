@@ -1392,7 +1392,6 @@ class PlotManager:
                 print(f"[highlight_range] 警告：找不到或無效的 current_checked_items")
                 print(f"[highlight_range] 使用預設 label_name: {label_name}")
             
-            # 原有的代碼...
             highlights = []
             text_labels = []
             colors = ['#FFD700', '#98FB98', '#87CEFA', '#DDA0DD', '#F08080']
@@ -1479,6 +1478,8 @@ class PlotManager:
             self.range_index_mapping = {}
             current_index = 0
             # 封裝所有範圍資料
+            print(f'[DEBUG CHECK TYPE] {type(full_data)}\n')
+            full_data = pd.DataFrame(full_data)
             range_info_list = self.extract_range_data(checked_items, full_data)
 
             # 更新 range_index_mapping
