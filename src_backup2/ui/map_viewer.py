@@ -807,7 +807,7 @@ class MapViewer(QMainWindow):
 
 
     def _on_track_click(self, event): 
-        """處理軌跡圖點擊事件"""
+        """處理軌跡圖點擊事件（已修正：解決單圈重製模式下的座標亂跳問題）"""
         if event.inaxes != self.track_ax or not hasattr(self, 'full_data'):
             return
 
@@ -833,27 +833,35 @@ class MapViewer(QMainWindow):
             nearest_df_index = -1             
             min_distance = float('inf')
 
-            if self.full_data_df_list:  # 多筆資料情況
-                for i, df in enumerate(self.full_data_df_list):  # 🔧 enumerate 可取得第幾個 df
-                    x_col = 'X' if 'X' in df.columns else 'Longitude'
-                    y_col = 'Y' if 'Y' in df.columns else 'Latitude'
+            # 判斷目前 PlotManager 是不是處於單圈重製狀態 (combined_track_data 是否存在)
+            is_lap_mode = hasattr(self.plot_manager, 'combined_track_data') and self.plot_manager.combined_track_data is not None
 
-                    distances = np.sqrt((df[x_col] - click_x) ** 2 + (df[y_col] - click_y) ** 2)
-                    idx_min = distances.idxmin()
-                    dist_min = distances.min()
-
-                    if dist_min < min_distance:
-                        min_distance = dist_min
-                        nearest_idx = idx_min
-                        nearest_df = df
-                        nearest_df_index = i     # 🔧 記住是第幾筆 df
-
-            else:  # 單筆資料情況
-                nearest_df = self.full_data
+            if is_lap_mode:
+                # 【新邏輯】如果處於單圈對比模式，點擊檢索應該針對 PlotManager 的 combined_track_data 進行
+                nearest_df = self.plot_manager.combined_track_data
                 x_col = 'X' if 'X' in nearest_df.columns else 'Longitude'
                 y_col = 'Y' if 'Y' in nearest_df.columns else 'Latitude'
                 distances = np.sqrt((nearest_df[x_col] - click_x) ** 2 + (nearest_df[y_col] - click_y) ** 2)
                 nearest_idx = distances.idxmin()
+            else:
+                # 【原邏輯】常規全域數據檢索
+                if self.full_data_df_list:  # 多筆資料情況
+                    for i, df in enumerate(self.full_data_df_list):
+                        x_col = 'X' if 'X' in df.columns else 'Longitude'
+                        y_col = 'Y' if 'Y' in df.columns else 'Latitude'
+                        distances = np.sqrt((df[x_col] - click_x) ** 2 + (df[y_col] - click_y) ** 2)
+                        dist_min = distances.min()
+                        if dist_min < min_distance:
+                            min_distance = dist_min
+                            nearest_idx = distances.idxmin()
+                            nearest_df = df
+                            nearest_df_index = i
+                else:  # 單筆資料情況
+                    nearest_df = self.full_data
+                    x_col = 'X' if 'X' in nearest_df.columns else 'Longitude'
+                    y_col = 'Y' if 'Y' in nearest_df.columns else 'Latitude'
+                    distances = np.sqrt((nearest_df[x_col] - click_x) ** 2 + (nearest_df[y_col] - click_y) ** 2)
+                    nearest_idx = distances.idxmin()
 
             if nearest_idx is None or nearest_df is None:
                 print("找不到最近點")
@@ -864,20 +872,33 @@ class MapViewer(QMainWindow):
             x = nearest_df[x_col].iloc[nearest_idx]
             y = nearest_df[y_col].iloc[nearest_idx]
 
+            # --- 【關鍵對齊：還原為全域絕對索引】 ---
+            final_sync_index = nearest_idx
+            if is_lap_mode and hasattr(self.plot_manager, 'range_index_mapping') and self.plot_manager.range_index_mapping:
+                # 找出目前勾選的項目中，第一個選中 Run 的真實原始起始索引
+                first_range_id = list(self.plot_manager.range_index_mapping.keys())[0]
+                original_start = self.plot_manager.range_index_mapping[first_range_id]['original_start']
+                # 絕對索引 = 相對點擊索引 + 原始起點
+                final_sync_index = nearest_idx + original_start
+                print(f"[INDEX SYNC] 相對索引: {nearest_idx} -> 還原絕對索引: {final_sync_index}")
+
             if self.is_setting_start_point:
-                self.plot_manager.set_start_point(nearest_idx, self.track_ax, self.track_canvas)
+                # 設定起點時，依然使用轉換後的絕對索引
+                self.plot_manager.set_start_point(final_sync_index, self.track_ax, self.track_canvas)
                 self.is_setting_start_point = False
                 self.set_start_button.setText("設定起點")
                 print(f"已在軌跡圖上設定起點:")
             else:
+                # 更新高亮標記：通知 PlotManager 在主圖表與軌跡圖上做出精確的位置連動
+                # 如果 PlotManager 內部 update_track_point 有自己的 lap 處理，則傳 nearest_idx，否則統一傳還原後的索引
                 self.plot_manager.update_track_point(nearest_idx, self.track_ax, self.track_canvas)
                 print(f"已更新軌跡圖上的點 def name : _on_track_click ")
 
-            print(f"索引: {nearest_idx}")
-            print(f"經度: {x:.6f}")
-            print(f"緯度: {y:.6f}")
+            print(f"點擊索引: {nearest_idx} (全域對齊: {final_sync_index})")
+            print(f"經度: {x:.6f}, 緯度: {y:.6f}")
             if nearest_df_index >= 0:
-                print(f"點擊位置來自第 {nearest_df_index + 1} 筆路線資料")  # 🔧 人類習慣從1開始
+                print(f"點擊位置來自第 {nearest_df_index + 1} 筆路線資料")
+                
         except Exception as e:
             print(f"處理軌跡圖點擊時出錯: {str(e)}")
             import traceback

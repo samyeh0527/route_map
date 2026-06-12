@@ -662,49 +662,62 @@ class PlotManager:
             traceback.print_exc()
 
     def _clear_all_highlights(self):
-        """清除所有高亮標記"""
+        """清除所有高亮標記（全面防禦防崩潰版本）"""
         try:
-            # 清除資訊文字
-            if self.info_text is not None:
-                self.info_text.remove()
-                self.info_text = None
-            
-            # 清除十字虛線和標記點
-            for line in self.crosshair_lines:
-                line.remove()
-            self.crosshair_lines = []
-            
-            # --- 【修正這裡：清除數值文字加上防禦】 ---
-            for text_obj in self.value_texts:
+            # 1. 安全清除資訊文字
+            if hasattr(self, 'info_text') and self.info_text is not None:
                 try:
-                    if text_obj is not None:
-                        text_obj.remove()
+                    self.info_text.remove()
                 except (NotImplementedError, ValueError, AttributeError):
                     pass
-            self.value_texts = []
+                self.info_text = None
             
-            # 清除軌跡圖上的標示點
-            if hasattr(self, 'track_point') and self.track_point:
-                self.track_point.remove()
+            # 2. 安全清除十字虛線和標記點 (crosshair_lines)
+            if hasattr(self, 'crosshair_lines') and self.crosshair_lines:
+                for line in self.crosshair_lines:
+                    try:
+                        if line is not None:
+                            line.remove()
+                    except (NotImplementedError, ValueError, AttributeError):
+                        pass  # 忽略已被 Matplotlib 釋放的物件
+                self.crosshair_lines = []
+            
+            # 3. 安全清除數值文字標籤 (value_texts)
+            if hasattr(self, 'value_texts') and self.value_texts:
+                for text_obj in self.value_texts:
+                    try:
+                        if text_obj is not None:
+                            text_obj.remove()
+                    except (NotImplementedError, ValueError, AttributeError):
+                        pass
+                self.value_texts = []
+                
+            # 4. 安全清除位置軌跡圖上的點 (track_point)
+            if hasattr(self, 'track_point') and self.track_point is not None:
+                try:
+                    # 判斷如果是 list/tuple 則遍歷移除
+                    if isinstance(self.track_point, (list, tuple)):
+                        for tp in self.track_point:
+                            if tp is not None: tp.remove()
+                    else:
+                        self.track_point.remove()
+                except (NotImplementedError, ValueError, AttributeError):
+                    pass
                 self.track_point = None
-            
-            # 清除位置軌跡圖的十字線和標記點
-            if hasattr(self, 'position_crosshair_lines'):
+
+            # 5. 安全清除位置十字交叉線 (position_crosshair_lines)
+            if hasattr(self, 'position_crosshair_lines') and self.position_crosshair_lines:
                 for line in self.position_crosshair_lines:
-                    line.remove()
+                    try:
+                        if line is not None:
+                            line.remove()
+                    except (NotImplementedError, ValueError, AttributeError):
+                        pass
                 self.position_crosshair_lines = []
-            
-            if hasattr(self, 'position_highlight_point') and self.position_highlight_point:
-                self.position_highlight_point.remove()
-                self.position_highlight_point = None
-            
-            # 強制更新圖表
-            self.figure.canvas.draw_idle()
-            
+
         except Exception as e:
-            print(f"清除高亮標記時出錯: {str(e)}")
-            import traceback
-            traceback.print_exc()
+            # 即使外部有未預期的錯誤，也僅打印 debug 訊息，不中斷 PyQt 主線程點擊事件
+            print(f"[DEBUG] _clear_all_highlights 執行防禦性跳過: {str(e)}")
 
     def set_click_callback(self, callback):
         """設置點擊回調函數"""
