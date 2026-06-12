@@ -1163,8 +1163,15 @@ class MapViewer(QMainWindow):
             print("無資料可繪製")
             return
 
+        # 1. 為了防範 UnboundLocalError，先給定預設的標籤名稱
+        x_label, y_label = 'X 軸', 'Y 軸'
+        has_valid_track = False  # 追蹤是否有至少一筆成功的軌跡
+
         colors = ['b', 'g', 'r', 'c', 'm', 'y', 'k']  # 顏色循環使用
         for idx, df in enumerate(data_sources):
+            if not isinstance(df, pd.DataFrame):
+                continue
+                
             if 'X' in df.columns and 'Y' in df.columns:
                 x_data, y_data = df['X'].dropna(), df['Y'].dropna()
                 x_label, y_label = 'X', 'Y'
@@ -1172,12 +1179,23 @@ class MapViewer(QMainWindow):
                 x_data, y_data = df['Longitude'].dropna(), df['Latitude'].dropna()
                 x_label, y_label = '經度', '緯度'
             else:
-                print(f"第 {idx+1} 筆資料缺少必要欄位，跳過")
+                print(f"第 {idx+1} 筆資料缺少必要欄位 (X/Y 或 經緯度)，跳過")
                 continue
 
-            color = colors[idx % len(colors)]
-            self.track_ax.plot(x_data, y_data, linestyle='-', linewidth=1.5, color=color, label=f'軌跡 {idx+1}')
+            # 如果成功找到欄位並有資料，標記為有效
+            if not x_data.empty and not y_data.empty:
+                has_valid_track = True
+                color = colors[idx % len(colors)]
+                self.track_ax.plot(x_data, y_data, linestyle='-', linewidth=1.5, color=color, label=f'軌跡 {idx+1}')
 
+        # 2. 如果沒有任何一筆有效資料被繪製，提示並結束，不執行後續的畫布設定
+        if not has_valid_track:
+            print("警告：所有載入的資料皆無效或無座標欄位，取消軌跡圖渲染。")
+            self.track_ax.set_title("無有效軌跡資料", fontsize=8)
+            self.track_canvas.draw()
+            return
+
+        # 3. 有成功繪製軌跡，才進行畫布細節設定
         self.track_ax.set_xlabel(x_label, fontsize=10)
         self.track_ax.set_ylabel(y_label, fontsize=10)
         self.track_ax.set_title("多筆軌跡圖", fontsize=8)

@@ -84,11 +84,20 @@ class PlotManager:
                 self.info_text = None
             
             for line in self.crosshair_lines:
-                line.remove()
+                try:
+                    if line is not None:
+                        line.remove()
+                except (NotImplementedError, ValueError):
+                    pass
             self.crosshair_lines = []
             
+            # 找到 create_plots 內部的這段迴圈並加上 try-except 保護
             for text_obj in self.value_texts:
-                text_obj.remove()
+                try:
+                    if text_obj is not None:
+                        text_obj.remove()
+                except (NotImplementedError, ValueError, AttributeError):
+                    pass  # 捕捉並忽略 Matplotlib 找不到 Artist 的錯誤
             self.value_texts = []
             
             # 清除圖表但保持起點資訊
@@ -665,9 +674,13 @@ class PlotManager:
                 line.remove()
             self.crosshair_lines = []
             
-            # 清除數值文字
+            # --- 【修正這裡：清除數值文字加上防禦】 ---
             for text_obj in self.value_texts:
-                text_obj.remove()
+                try:
+                    if text_obj is not None:
+                        text_obj.remove()
+                except (NotImplementedError, ValueError, AttributeError):
+                    pass
             self.value_texts = []
             
             # 清除軌跡圖上的標示點
@@ -971,7 +984,12 @@ class PlotManager:
             # 清除起點線
             if hasattr(self, 'start_point_line') and self.start_point_line:
                 for line in self.start_point_line:
-                    line.remove()
+                    try:
+                        # 加上防禦：確保物件存在且未被提早清除
+                        if line is not None:
+                            line.remove()
+                    except (NotImplementedError, ValueError):
+                        pass  # 捕捉並忽略 Matplotlib 無法移除的底層錯誤
                 self.start_point_line = None
             
             # 重置起點相關變數
@@ -1453,12 +1471,20 @@ class PlotManager:
         """移除指定Run的高亮顯示"""
         try:
             if range_id in self.range_highlights:
-                # 移除所有子圖中的高亮
+                # 移除所有子圖中的高亮背景區塊
                 for highlight in self.range_highlights[range_id]['highlights']:
-                    highlight.remove()
+                    try:
+                        if highlight is not None:
+                            highlight.remove()
+                    except (NotImplementedError, ValueError):
+                        pass
                 # 移除所有文字標籤
                 for label in self.range_highlights[range_id]['labels']:
-                    label.remove()
+                    try:
+                        if label is not None:
+                            label.remove()
+                    except (NotImplementedError, ValueError):
+                        pass
                 del self.range_highlights[range_id]
                 
         except Exception as e:
@@ -1478,10 +1504,25 @@ class PlotManager:
             self.range_index_mapping = {}
             current_index = 0
             # 封裝所有範圍資料
-            print(f'[DEBUG CHECK TYPE] {type(full_data)}\n')
-            full_data = pd.DataFrame(full_data)
-            range_info_list = self.extract_range_data(checked_items, full_data)
+            print(f'[DEBUG CHECK TYPE RUN] {type(full_data)}\n')
+            
+            # 【修正】如果是載入多檔案（list of DataFrames），我們應該直接取第一筆，
+            # 或是讓 full_data 保持原始結構，不要盲目轉換成 DataFrame
+            if isinstance(full_data, list):
+                print(f'[DEBUG CHECK TYPE NOT DATAFRAME] 檢測到多檔案串列 {type(full_data)}，長度: {len(full_data)}\n')
+                # 為了確保下方 col_name in full_data.columns 的相容性判斷不崩潰，
+                # 我們把 full_data 變數安全地指向多筆資料中的第一筆 DataFrame 作為欄位基準
+                if len(full_data) > 0 and isinstance(full_data[0], pd.DataFrame):
+                    full_data_ref = full_data[0]
+                else:
+                    raise ValueError("full_data 串列為空或內部元素不是 DataFrame")
+            else:
+                full_data_ref = full_data  # 如果本來就是單一 DataFrame，直接引用
 
+            # 注意：下方的 extract_range_data 請依據您的架構設計傳入原本的 full_data (list)
+            # 如果您的 extract_range_data 預期的是 list，就傳入 full_data
+            range_info_list = self.extract_range_data(checked_items, full_data)
+            
             # 更新 range_index_mapping
             self.range_index_mapping = {}
             for info in range_info_list:
@@ -1518,7 +1559,7 @@ class PlotManager:
             
             # 為每個勾選的範圍繪製對應的圖表
             for ax_name, (col_name, ax) in plot_config.items():
-                if col_name in full_data.columns:
+                if col_name in full_data_ref.columns:
                     for info in range_info_list:
                         df = info['data']
                         label_name = info['label']
@@ -1579,7 +1620,7 @@ class PlotManager:
             return False
 
     def extract_range_data(self, checked_items, full_data):
-        """將每個範圍資料與索引包裝成模組化結構"""
+        """將每個範圍資料與索引包裝成模組化結構（支援單一 DataFrame 與多檔 list 結構）"""
         print(f"[DEBUG] [extract_range_data] checked_items: {checked_items}")
         packaged_ranges = []
         current_index = 0
@@ -1588,15 +1629,37 @@ class PlotManager:
             description = item['description']
             range_id = item['id']
             label = item.get('label', f'Run {range_id}')
-            start_idx = int(description.split(',')[0].split(':')[1])
-            end_idx = int(description.split(',')[1].split(':')[1])
+            
+            # 安全解析 start_index 與 end_index
+            try:
+                start_idx = int(description.split(',')[0].split(':')[1])
+                end_idx = int(description.split(',')[1].split(':')[1])
+            except Exception as parse_err:
+                print(f"[extract_range_data] 解析索引描述失敗: {description}, 錯誤: {parse_err}")
+                continue
+                
             range_length = end_idx - start_idx + 1
 
-            # 擷取並重設索引
-            df = full_data.iloc[start_idx:end_idx+1].copy()
-            df.reset_index(drop=True, inplace=True)
+            # --- 【關鍵修正：動態識別數據源】 ---
+            if isinstance(full_data, list):
+                # 如果是多檔案 list，目前單圈切割索引（Run）皆是以第一檔資料 (df1) 為基準分析出來的
+                if len(full_data) > 0 and isinstance(full_data[0], pd.DataFrame):
+                    source_df = full_data[0]
+                else:
+                    print("[extract_range_data] 錯誤：傳入的 full_data 串列為空或元素非 DataFrame")
+                    continue
+            else:
+                source_df = full_data  # 常規單一 DataFrame 情況
 
-            # 移動平均
+            # 安全地從正確的數據源進行切片與深拷貝
+            try:
+                df = source_df.iloc[start_idx:end_idx+1].copy()
+                df.reset_index(drop=True, inplace=True)
+            except Exception as slice_err:
+                print(f"[extract_range_data] 擷取資料切片失敗 (範圍 {start_idx}-{end_idx}): {slice_err}")
+                continue
+
+            # 移動平均濾波（保持您原有的 WMA 配置邏輯）
             if self.combo_selection is not None:
                 df = self.weighted_moving_average(window_size=int(self.combo_selection), pending_data=df)
 
@@ -1610,25 +1673,34 @@ class PlotManager:
             })
 
             current_index += range_length
-        print(f"[DEBUG] [extract_range_data] packaged_ranges: {packaged_ranges}")
+            
+        print(f"[DEBUG] [extract_range_data] packaged_ranges 封裝完成，共 {len(packaged_ranges)} 組")
         return packaged_ranges
 
 
 
     def plot_track_for_ranges(self, checked_items, full_data, track_ax, track_canvas):
-        """繪製軌跡圖"""
+        """繪製軌跡圖（已修正：支援多檔案 list 結構）"""
         try:
             track_ax.clear()
             
-            # 確定座標列名
-            x_col = 'X' if 'X' in full_data.columns else 'Longitude'
-            y_col = 'Y' if 'Y' in full_data.columns else 'Latitude'
+            # --- 【關鍵修正：動態識別數據源，獲取欄位名稱】 ---
+            if isinstance(full_data, list):
+                if len(full_data) > 0 and isinstance(full_data[0], pd.DataFrame):
+                    source_df = full_data[0]
+                else:
+                    print("[plot_track_for_ranges] 錯誤：傳入的 full_data 串列為空或元素非 DataFrame")
+                    return
+            else:
+                source_df = full_data  # 常規單一 DataFrame 情況
+
+            # 從正確的數據源判定座標列名
+            x_col = 'X' if 'X' in source_df.columns else 'Longitude'
+            y_col = 'Y' if 'Y' in source_df.columns else 'Latitude'
             
             # 創建一個新的 DataFrame 來存儲第一個選中Run的數據
             combined_data = pd.DataFrame()
             
-            # 反轉列表順序，使第一個選中的Run顯示在最上層
-            #reversed_items = list(reversed(checked_items))
             reversed_items = list((checked_items))
             # 繪製每個選中Run的軌跡
             for index, item_data in enumerate(reversed_items):
@@ -1642,8 +1714,8 @@ class PlotManager:
                 start_idx = indices['start_index']
                 end_idx = indices['end_index']
                 
-                # 獲取該Run的數據並重設索引
-                range_data = full_data.iloc[start_idx:end_idx+1].copy()
+                # --- 【關鍵修正：切片時同樣要區分數據源】 ---
+                range_data = source_df.iloc[start_idx:end_idx+1].copy()
                 range_data.reset_index(drop=True, inplace=True)
                 
                 # 只保存第一個選中Run的數據用於索引
