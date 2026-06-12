@@ -781,9 +781,8 @@ class MapViewer(QMainWindow):
                 print(f"延遲高亮顯示時出錯: {str(e)}")
 
     def start_setting_start_point(self):
-        """開始設定起點模式"""
+        """開始設定起點模式（已同步啟用趨勢圖設定起點功能）"""
         if self.plot_manager.has_start_point():
-            # UI 相關邏輯保留在 MapViewer
             reply = QMessageBox.warning(
                 self,
                 "警告",
@@ -791,20 +790,17 @@ class MapViewer(QMainWindow):
                 QMessageBox.Yes | QMessageBox.No,
                 QMessageBox.No
             )
-            
             if reply == QMessageBox.No:
                 return
         
-            # 清除軌跡圖上的起點標記
             self.plot_manager.clear_start_point()
-            self.track_canvas.draw()  # 立即更新軌跡圖顯示
+            self.track_canvas.draw()
         
-        # UI 狀態管理
+        # 同步啟動雙邊的設定起點狀態旗標
         self.is_setting_start_point = True
-        self.set_start_button.setText("請在位置軌跡圖上選擇起點")
-        # 委託 PlotManager 處理數據相關操作
+        self.plot_manager.is_setting_start_point = True  # 👈 確保這行有加進去
+        self.set_start_button.setText("請點選任意時序圖表或軌跡圖以設定起點")
         self.plot_manager.enable_start_point_selection()
-
 
     def _on_track_click(self, event): 
         """處理軌跡圖點擊事件（已修正：解決單圈重製模式下的座標亂跳問題）"""

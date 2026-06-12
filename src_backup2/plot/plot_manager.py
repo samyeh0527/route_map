@@ -56,6 +56,7 @@ class PlotManager:
         self.figure.canvas.mpl_connect('button_release_event', self._FastDragPlot)
         #透過函式參數傳入
         self.combo_selection = None
+        self._just_set_start_point = False
 
     def create_plots(self, highlight_index=None, highlight_range=None):
         """創建圖表，支持高亮顯示"""
@@ -427,132 +428,95 @@ class PlotManager:
         ax.yaxis.set_major_formatter(plt.FormatStrFormatter('%.4f'))
 
     def _on_plot_click(self, event):
-        if event.inaxes is None:
+        """處理主圖表點擊回調（已優化：採用 QTimer 延時解鎖，徹底阻斷滑鼠放開時的殘留抖動）"""
+        if event.inaxes is None or event.xdata is None:
             return
         
-        try:
-            if not self.data_list:
-                print("警告：沒有可用的數據")
-                return
-            
-            if hasattr(self, 'current_checked_items') and self.current_checked_items:
+        # --- 🛡️【安全防線：防震鎖啟用期間，拒絕任何事件污染】---
+        if getattr(self, '_just_set_start_point', False):
+            return
+
+        # --- 【核心攔截：在時序圖表上點擊設定起點】 ---
+        if getattr(self, 'is_setting_start_point', False):
+            try:
                 nearest_idx = int(round(event.xdata))
                 
-                # 找出點擊位置所屬的Run
-                clicked_run_info = None
-                for range_id, range_info in self.range_index_mapping.items():
-                    if range_info['start'] <= nearest_idx <= range_info['end']:
-                        clicked_run_info = {
-                            'run_id': range_id,
-                            'relative_idx': nearest_idx - range_info['start']
-                        }
+                from PyQt5.QtWidgets import QApplication
+                from ui.map_viewer import MapViewer
+                from PyQt5.QtCore import QTimer  # 引入定時器
+                
+                main_win = None
+                for widget in QApplication.topLevelWidgets():
+                    if isinstance(widget, MapViewer):
+                        main_win = widget
                         break
                 
-                if clicked_run_info is not None:
-                    relative_idx = clicked_run_info['relative_idx']
+                if main_win:
+                    print(f"\n[DEBUG][START POINT VIA PLOT] 成功在時序圖上選定起點位置，索引: {nearest_idx}")
                     
-                    # 正確的方式清除舊的數值標籤
-                    for ax in self.axes.values():
-                        # 找出需要移除的文字對象
-                        texts_to_remove = [text for text in ax.texts if hasattr(text, 'is_value_label')]
-                        # 逐個移除文字對象
-                        for text in texts_to_remove:
-                            text.remove()
+                    # 1. 強制啟動防震狀態鎖
+                    self._just_set_start_point = True
                     
-                    # 其餘代碼保持不變
-                    run_count = len(self.range_highlights)
-                    vertical_spacing = 0.15
+                    # 執行設定起點
+                    self.set_start_point(nearest_idx, main_win.track_ax, main_win.track_canvas)
                     
-                    updates = []
-                    for i, (range_id, range_obj) in enumerate(self.range_highlights.items()):
-                        vertical_position = 0.95 - (i * vertical_spacing)
-                        range_info = self.range_index_mapping[range_id]
-                        original_idx = range_info['original_start'] + relative_idx
+                    # 2. 立即將任何潛在的拖曳旗標歸零
+                    self.is_dragging = False
+                    
+                    # 3. 傳入當前 ax 釋放 Matplotlib 焦點鎖
+                    try:
+                        event.canvas.release_mouse(event.inaxes)
+                        print("[DEBUG][DRAG FIX] 已成功對 Canvas 呼叫 release_mouse(ax) 解鎖。")
+                    except Exception as e_release:
+                        print(f"[DEBUG][DRAG FIX] 呼叫 release_mouse 失敗: {e_release}")
+                    
+                    # 4. UI 狀態重置
+                    main_win.is_setting_start_point = False
+                    main_win.set_start_button.setText("設定起點")
+                    self.is_setting_start_point = False
+                    
+                    # 5. 刷新畫布
+                    self.figure.canvas.draw_idle()
+                    print("[DEBUG][DRAG FIX] --- 起點邏輯安全退出，QTimer 防震保護啟動 ---")
+                    
+                    # ====== ✨【核心優化點：半秒鐘後自動解鎖】======
+                    # 讓防震鎖在後台維持 500 毫秒，這段期間內任何滑鼠移動、放開、抖動都會被完全過濾
+                    QTimer.singleShot(500, self._unlock_anti_shake)
+                    
+                    return  # 完美精確攔截
+                    
+            except Exception as e:
+                print(f"在趨勢圖上設定起點時出錯: {str(e)}")
+                self._just_set_start_point = False
+                return
+
+        # --- 【常規點擊連動邏輯】 ---
+        try:
+            nearest_idx = int(round(event.xdata))
+            print(f"[DEBUG][_on_plot_click] 觸發常規點擊更新，目前點擊索引: {nearest_idx}")
+            
+            # 清除舊的標記點並更新軌跡圖
+            self.update_track_point(nearest_idx, event.inaxes, event.canvas)
+            
+            if hasattr(self, 'discovered_ranges') and self.discovered_ranges:
+                for range_info in self.discovered_ranges:
+                    s_idx = range_info.get('start_index', range_info.get('start', 0))
+                    e_idx = range_info.get('end_index', range_info.get('end', 0))
+                    if s_idx <= nearest_idx <= e_idx:
+                        print(f"[DEBUG][_on_plot_click] 點擊落在範圍 {range_info.get('range_number')} 內")
                         
-                        if original_idx <= range_info['original_end']:
-                            for text in range_obj['labels']:
-                                # 找到對應的 item_data 以獲取自定義標籤
-                                item_data = next((item for item in self.current_checked_items 
-                                                if item['id'] == range_id), None)
-                                label_name = item_data.get('label', f'Run {range_id}') if item_data else f'Run {range_id}'
-                                
-                                if text.label_type == 'speed':
-                                    value = self.data_list[0]['G Speed'].iloc[original_idx]
-                                    text.set_text(f'{label_name}\n{value:.1f} km/h')
-                                    print(f"[_on_plot_click] 更新速度標籤，value: {value}")
-                                    updates.append((self.axes['speed'], range_id, value, vertical_position))
-                                elif text.label_type == 'r_scale1':
-                                    value = self.data_list[0]['R Scale 1'].iloc[original_idx]
-                                    text.set_text(f'{label_name}\n{value:.2f}')
-                                    print(f"[_on_plot_click] 更新R Scale 1標籤，value: {value}")
-                                    updates.append((self.axes['r_scale1'], range_id, value, vertical_position))
-                                elif text.label_type == 'r_scale2':
-                                    value = self.data_list[0]['R Scale 2'].iloc[original_idx]
-                                    text.set_text(f'{label_name}\n{value:.2f}')
-                                    print(f"[_on_plot_click] 更新R Scale 2標籤，value: {value}")
-                                    updates.append((self.axes['r_scale2'], range_id, value, vertical_position))
-                                text.set_y(0.85)
-                    
-                    # 批量添加新的數值標籤
-                    for ax, range_id, value, vertical_position in updates:
-                        if isinstance(ax, str):
-                            ax = self.axes[ax]
-                        # 修改字體大小為7，並調整文字框的padding和間距
-                        value_text = ax.text(0.98, vertical_position,
-                                           f'Run {range_id}: {value:.2f}',
-                                           transform=ax.transAxes,
-                                           horizontalalignment='right',
-                                           verticalalignment='top',
-                                           fontsize=7,  # 縮小字體
-                                           zorder=float('inf'),
-                                           bbox=dict(facecolor='white',
-                                                   edgecolor='black',
-                                                   alpha=0.8,
-                                                   pad=0.2,  # 減小padding
-                                                   boxstyle='round,pad=0.3'))  # 減小文字框邊距
-                        value_text.is_value_label = True
-                        
-                        # 調整垂直間距，避免重疊
-                        vertical_spacing = 0.08  # 減小垂直間距
-                    
-                    # 一次性更新所有圖表
-                    self._update_all_plots_with_reset_index(nearest_idx)
-                    
-                    # 觸發回調
-                    if self.click_callback:
-                        self.click_callback(nearest_idx)
-                    
-                    # 最後才重繪圖表
-                    self.figure.canvas.draw()
-                
-            else:
-                # 使用原始數據的處理邏輯（保持不變）
-                nearest_idx = int(round(event.xdata))
-                if 0 <= nearest_idx < len(self.data_list[0]):
-                    self._update_highlights(nearest_idx)
-                    
-                    for range_id, range_obj in self.range_highlights.items():
-                        for text in range_obj['labels']:
-                            if text.label_type == 'speed':
-                                value = self.data_list[0]['G Speed'].iloc[nearest_idx]
-                                text.set_text(f'Run {text.range_id}\n{value:.1f} km/h')
-                            elif text.label_type == 'r_scale1':
-                                value = self.data_list[0]['R Scale 1'].iloc[nearest_idx]
-                                text.set_text(f'Run {text.range_id}\n{value:.2f}')
-                            elif text.label_type == 'r_scale2':
-                                value = self.data_list[0]['R Scale 2'].iloc[nearest_idx]
-                                text.set_text(f'Run {text.range_id}\n{value:.2f}')
-                            text.set_y(0.85)
-                    
-                    if self.click_callback:
-                        self.click_callback(nearest_idx)
-                    
-                    self.figure.canvas.draw()
+            print(f"已更新軌跡圖上的點 class name _on_plot_clicked")
             
         except Exception as e:
             print(f"處理主圖表點擊回調時出錯: {str(e)}")
             import traceback
             traceback.print_exc()
+
+    def _unlock_anti_shake(self):
+        """定時器專用回調：安全解除防震鎖"""
+        self._just_set_start_point = False
+        print("[DEBUG][QTimer] 500ms 隔離期滿，防震鎖已安全解鎖，圖表恢復自由常態。\n")
+
 
     def _update_main_plots_with_reset_index(self, index):
         """使用重設後的索引更新主圖表"""
@@ -854,21 +818,38 @@ class PlotManager:
             import traceback
             traceback.print_exc()
     def _FastDragPlot(self, event):
-        """快速拖動圖表 (支援滑鼠點擊拖曳)"""
+        """快速拖動圖表 (支援滑鼠點擊拖曳)（已優化：移除了會提早解鎖的舊代碼，改由 QTimer 控鎖）"""
         try:
             if event.inaxes is None:
                 return
 
             ax = event.inaxes
 
-            # 滑鼠按下 (開始拖曳)
+            from PyQt5.QtWidgets import QApplication
+            from ui.map_viewer import MapViewer
+            
+            main_win = None
+            for widget in QApplication.topLevelWidgets():
+                if isinstance(widget, MapViewer):
+                    main_win = widget
+                    break
+
+            is_setting = main_win and getattr(main_win, 'is_setting_start_point', False)
+
+            # --- 滑鼠按下 (開始拖曳) ---
             if event.name == 'button_press_event' and event.button == 1:
+                if is_setting or getattr(self, '_just_set_start_point', False):
+                    return
                 self.is_dragging = True
                 self.x0, self.y0 = event.xdata, event.ydata
                 self.xlim0, self.ylim0 = ax.get_xlim(), ax.get_ylim()
 
-            # 滑鼠移動 (執行拖曳)
-            elif event.name == 'motion_notify_event' and getattr(self, "is_dragging", False):  # 避免屬性不存在
+            # --- 滑鼠移動 (執行拖曳) ---
+            elif event.name == 'motion_notify_event' and getattr(self, "is_dragging", False):
+                if is_setting or getattr(self, '_just_set_start_point', False):
+                    self.is_dragging = False
+                    return
+                
                 if event.xdata is None or event.ydata is None:
                     return
                 
@@ -877,25 +858,25 @@ class PlotManager:
 
                 ax.set_xlim(self.xlim0[0] + dx, self.xlim0[1] + dx)
                 ax.set_ylim(self.ylim0[0] + dy, self.ylim0[1] + dy)
+                self.figure.canvas.draw_idle()
 
-                self.figure.canvas.draw_idle()  # 即時更新畫布
-
-            # 滑鼠釋放 (停止拖曳)
+            # --- 滑鼠釋放 (停止拖曳) ---
             elif event.name == 'button_release_event' and event.button == 1:
                 self.is_dragging = False
+                # 【優化】移除原本在這裡會提早將 _just_set_start_point 設為 False 的代碼
+                # 完全交由上方 _on_plot_click 的 QTimer 延時解鎖，確保安全
 
         except Exception as e:
-            print(f"拖拉圖表時出錯: {str(e)}")
-            import traceback
-            traceback.print_exc()
-
+            print(f"拖拉圖表時出錯: {str(e)}") 
+    
+    
     def enable_start_point_selection(self):
         """啟用起點選擇模式"""
         self.is_setting_start_point = True
         print("請在位置軌跡圖上選擇起點")
 
     def set_start_point(self, index, track_ax, track_canvas):
-        """設定起點"""
+        """設定起點（已補上全面防禦，徹底根除 cannot remove artist 錯誤）"""
         try:
             # 確保 index 是整數類型
             index = int(index)
@@ -903,10 +884,10 @@ class PlotManager:
             # 儲存起點資訊
             self.start_point = index
             self.has_start_point_set = True
-            self.start_point_data = {'x': index}  # 確保存儲的也是整數
+            self.start_point_data = {'x': index}
             
             # 獲取選中點的座標，處理不同的列名情況
-            data = self.data_list[0]  # 假設使用第一個數據集
+            data = self.data_list[0]  # 使用第一個數據集
             x_col = 'X' if 'X' in data.columns else 'Longitude'
             y_col = 'Y' if 'Y' in data.columns else 'Latitude'
             
@@ -916,45 +897,56 @@ class PlotManager:
             # 更新軌跡圖上的點
             self.update_track_point(index, track_ax, track_canvas)
             print(f"已更新軌跡圖上的點 clsaa name {self.update_track_point.__name__}")
-            # 清除舊的標記線
+            
+            # --- 【核心安全修正：防禦性清除舊的起點標記線】 ---
             if hasattr(self, 'start_point_line') and self.start_point_line:
                 for line in self.start_point_line:
-                    line.remove()
+                    try:
+                        if line is not None:
+                            line.remove()
+                    except (NotImplementedError, ValueError, AttributeError):
+                        pass  # 補上安全捕獲：忽略已被畫布提前洗掉或失效的 Artist 物件
+                self.start_point_line = None
             
             self.start_point_line = []
             
             # 為主圖表添加垂直線並更新顯示
             for ax_name, ax in self.axes.items():
-                line = ax.axvline(x=index, color='green', linestyle='--', linewidth=2)
-                self.start_point_line.append(line)
-                ax.figure.canvas.draw()  # 更新每個主圖表
+                if ax is not None:
+                    line = ax.axvline(x=index, color='green', linestyle='--', linewidth=2)
+                    self.start_point_line.append(line)
+                    try:
+                        ax.figure.canvas.draw_idle()  # 使用低消耗的延遲局部刷新代替立即強制重繪
+                    except Exception:
+                        pass
             
             # 計算1公分的數據單位長度
-            y_range = track_ax.get_ylim()[1] - track_ax.get_ylim()[0]
-            fig_height_inches = track_ax.figure.get_size_inches()[1]
-            one_cm_data_units = (y_range / (fig_height_inches * 2.54))  # 轉換1公分到數據單位
-            
-            # 在軌跡圖上添加垂直線（向上下各延伸1公分）
-            track_line = track_ax.plot([x, x], 
-                                     [y - one_cm_data_units, y + one_cm_data_units],  # 從選取點向上下各延伸1公分
-                                     color='green',
-                                     linestyle='--',
-                                     linewidth=2)[0]
-            self.start_point_line.append(track_line)
+            try:
+                y_range = track_ax.get_ylim()[1] - track_ax.get_ylim()[0]
+                fig_height_inches = track_ax.figure.get_size_inches()[1]
+                one_cm_data_units = (y_range / (fig_height_inches * 2.54))  # 轉換1公分到數據單位
+                
+                # 在軌跡圖上添加垂直線（向上下各延伸1公分）
+                track_line = track_ax.plot([x, x], 
+                                         [y - one_cm_data_units, y + one_cm_data_units], 
+                                         color='green',
+                                         linestyle='--',
+                                         linewidth=2)[0]
+                self.start_point_line.append(track_line)
+            except Exception as e_track:
+                print(f"[set_start_point] 在軌跡圖上畫綠色標記線時跳過: {e_track}")
             
             # 更新軌跡圖顯示
-            track_canvas.draw()
+            track_canvas.draw_idle()
             
             # 呼叫 analyze_ranges 進行分析
             self.analyze_ranges(index)
-            #print(analyze,"\n",type(analyze),"\n",len(analyze))  
             print(f"起點已設定在索引: {index}")
             
         except Exception as e:
             print(f"設定起點時出錯: {str(e)}")
             import traceback
             traceback.print_exc()
-
     def _draw_start_point_line(self):
         """重新繪製起點標記線"""
         if not self.has_start_point_set or self.start_point_data is None:
