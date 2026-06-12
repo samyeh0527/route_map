@@ -1504,54 +1504,33 @@ class PlotManager:
             print(f"移除Run高亮時出錯: {str(e)}")
 
     def plot_selected_ranges(self, checked_items, full_data, axes, canvas, track_ax, track_canvas):
-        """繪製選中Run的圖表"""
-        #WMA要用這邊的full_data來繪製圖表
-        
+        """繪製選中 Run 的圖表（已修正：相容多檔案路由架構，消除 KeyError）"""
         try:
             self.current_checked_items = checked_items
             print(f"[plot_selected_ranges] current_checked_items: {self.current_checked_items}")
             
-            print("\n=== 重新編排索引後的Run詳細資料 ===")
+            print("\n=== 重新編排索引後的 Run 詳細資料 ===")
 
-            # 創建一個字典來存儲每個Run的索引映射
-            self.range_index_mapping = {}
-            current_index = 0
-            # 封裝所有範圍資料
-            print(f'[DEBUG CHECK TYPE RUN] {type(full_data)}\n')
-            
-            # 【修正】如果是載入多檔案（list of DataFrames），我們應該直接取第一筆，
-            # 或是讓 full_data 保持原始結構，不要盲目轉換成 DataFrame
+            # 1. 識別多檔案環境並獲取欄位基準參照 (full_data_ref)，用於下方的欄位檢查
             if isinstance(full_data, list):
-                print(f'[DEBUG CHECK TYPE NOT DATAFRAME] 檢測到多檔案串列 {type(full_data)}，長度: {len(full_data)}\n')
-                # 為了確保下方 col_name in full_data.columns 的相容性判斷不崩潰，
-                # 我們把 full_data 變數安全地指向多筆資料中的第一筆 DataFrame 作為欄位基準
                 if len(full_data) > 0 and isinstance(full_data[0], pd.DataFrame):
                     full_data_ref = full_data[0]
                 else:
                     raise ValueError("full_data 串列為空或內部元素不是 DataFrame")
             else:
-                full_data_ref = full_data  # 如果本來就是單一 DataFrame，直接引用
+                full_data_ref = full_data
 
-            # 注意：下方的 extract_range_data 請依據您的架構設計傳入原本的 full_data (list)
-            # 如果您的 extract_range_data 預期的是 list，就傳入 full_data
+            # 2. 呼叫我們升級後的 extract_range_data 函數獲取切片數據列表
+            # 注意：此時 self.range_index_mapping 會在 extract_range_data 內部被精確建立！
             range_info_list = self.extract_range_data(checked_items, full_data)
             
-            # 更新 range_index_mapping
-            self.range_index_mapping = {}
-            for info in range_info_list:
-                self.range_index_mapping[info['range_id']] = {
-                    'start': info['remapped_range'][0],
-                    'end': info['remapped_range'][1],
-                    'original_start': info['original_range'][0],
-                    'original_end': info['original_range'][1],
-                }
+            if not range_info_list:
+                print("[plot_selected_ranges] 錯誤：提取的單圈範圍數據為空")
+                return False
 
-            # 原有的圖表繪製代碼保持不變
+            # 3. 清理主圖表並重新配置 $3 \times 1$ 的緊湊布局 [cite: 110]
             self.figure.clear()
-            
-            gs = self.figure.add_gridspec(3, 1, 
-                                        height_ratios=[1, 1, 1], 
-                                        hspace=0)
+            gs = self.figure.add_gridspec(3, 1, height_ratios=[1, 1, 1], hspace=0)
             
             self.axes = {
                 'speed': self.figure.add_subplot(gs[0, 0]),
@@ -1559,8 +1538,8 @@ class PlotManager:
                 'r_scale2': self.figure.add_subplot(gs[2, 0]),
             }
             
-            # 清除選中範圍的圖表
-            for i, ax in enumerate(axes):
+            # 清除傳入的軸元件
+            for ax in axes:
                 ax.clear()
             
             # 定義要繪製的列和對應的軸
@@ -1570,155 +1549,247 @@ class PlotManager:
                 'r_scale2': ('R Scale 2', self.axes['r_scale2'])
             }
             
-            # 為每個勾選的範圍繪製對應的圖表
+            # 4. 為每個勾選的範圍繪製對應的時間序列圖表
             for ax_name, (col_name, ax) in plot_config.items():
                 if col_name in full_data_ref.columns:
-                    for info in range_info_list:
-                        df = info['data']
-                        label_name = info['label']
-                        range_id = info['range_id']
+                    # 遍歷提取出來的每一組獨立單圈數據
+                    for index, range_df in enumerate(range_info_list):
+                        item_data = checked_items[index]
+                        label_name = item_data.get('label', f'Run {item_data["id"]}')
+                        
+                        # 繪製主畫布
+                        ax.plot(range_df.index, range_df[col_name], '-', linewidth=1, label=label_name)
 
-                        ax.plot(df.index, df[col_name], '-', linewidth=1, label=label_name)
-
+                        # 同步繪製選中範圍畫布
                         selected_ax = axes[list(plot_config.keys()).index(ax_name)]
-                        selected_ax.plot(df.index, df[col_name], '-', linewidth=1, label=label_name)
+                        selected_ax.plot(range_df.index, range_df[col_name], '-', linewidth=1, label=label_name)
 
-                    
-                    # 設置主圖表屬性
+                    # 設置主圖表美化屬性
                     ax.set_title(col_name, 
                                fontsize=7,
                                fontfamily='sans-serif',
-                               loc='left',  # 確保標題靠左
+                               loc='left',
                                pad=10,
-                               bbox=dict(
-                                   facecolor='black',
-                                   edgecolor='none',
-                                   pad=3.0,
-                                   alpha=1.0
-                               ),
-                               color='white')
+                               bbox=dict(facecolor='black', edgecolor='none', pad=3.0, alpha=1.0),
+                               color='white') 
                     ax.grid(True, alpha=0.3)
                     ax.tick_params(axis='both', labelsize=8)
                     if len(checked_items) > 1:
-                        ax.legend(fontsize=8, loc='upper left')  # 將圖例設置在左上角
+                        ax.legend(fontsize=8, loc='upper left')
                     
-                    # 設置選中範圍圖表的屬性
+                    # 設置選中範圍子圖表的屬性
                     selected_ax = axes[list(plot_config.keys()).index(ax_name)]
-                    selected_ax.set_title(col_name, 
-                                        fontsize=10, 
-                                        loc='left',  # 確保標題靠左
-                                        pad=10)
+                    selected_ax.set_title(col_name, fontsize=10, loc='left', pad=10)
                     selected_ax.grid(True)
                     selected_ax.set_xlabel('索引')
                     selected_ax.set_ylabel(col_name)
                     if len(checked_items) > 1:
-                        selected_ax.legend(loc='upper left')  # 將圖例設置在左上角
+                        selected_ax.legend(loc='upper left')
             
-            # 調整布局並更新圖表
+            # 5. 調整佈局並刷新畫布
+            self.figure.tight_layout() 
+            canvas.figure.tight_layout()
+            self.figure.canvas.draw()
+            canvas.draw()
+            
+            # 6. 直接呼叫我們升級後的 plot_track_for_ranges 繪製多色重疊軌跡 [cite: 168]
+            # 內部已包含 extract_range_data 安全路由邏輯，不需重覆提取
+            self.plot_track_for_ranges_direct(range_info_list, checked_items, track_ax, track_canvas)
+            
+            print("\n=== Run 資料輸出完成 ===")
+            return True
+            
+        except Exception as e:
+            print(f"繪製選中 Run 時出錯: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return False
+
+    def plot_selected_ranges(self, checked_items, full_data, axes, canvas, track_ax, track_canvas):
+        """繪製選中 Run 的圖表（已清理乾淨，排除 NameError 雜質）"""
+        try:
+            self.current_checked_items = checked_items
+            print(f"[plot_selected_ranges] current_checked_items: {self.current_checked_items}")
+            
+            print("\n=== 重新編排索引後的 Run 詳細資料 ===")
+
+            # 1. 識別多檔案環境並獲取欄位基準參照 (full_data_ref)，用於下方的欄位檢查
+            if isinstance(full_data, list):
+                if len(full_data) > 0 and isinstance(full_data[0], pd.DataFrame):
+                    full_data_ref = full_data[0]
+                else:
+                    raise ValueError("full_data 串列為空或內部元素不是 DataFrame")
+            else:
+                full_data_ref = full_data
+
+            # 2. 呼叫我們升級後的 extract_range_data 函數獲取切片數據列表
+            # 注意：此時 self.range_index_mapping 會在 extract_range_data 內部被精確建立
+            range_info_list = self.extract_range_data(checked_items, full_data)
+            
+            if not range_info_list:
+                print("[plot_selected_ranges] 錯誤：提取的單圈範圍數據為空")
+                return False
+
+            # 3. 清理主圖表並重新配置 3x1 的緊湊布局
+            self.figure.clear()
+            gs = self.figure.add_gridspec(3, 1, height_ratios=[1, 1, 1], hspace=0)
+            
+            self.axes = {
+                'speed': self.figure.add_subplot(gs[0, 0]),     # 速度圖放在最上方
+                'r_scale1': self.figure.add_subplot(gs[1, 0]),  # R Scale 1 放在中間
+                'r_scale2': self.figure.add_subplot(gs[2, 0]),  # R Scale 2 放在最下方
+            }
+            
+            # 清除傳入的軸元件
+            for ax in axes:
+                ax.clear()
+            
+            # 定義要繪製的列和對應的軸
+            plot_config = {
+                'speed': ('G Speed', self.axes['speed']),
+                'r_scale1': ('R Scale 1', self.axes['r_scale1']),
+                'r_scale2': ('R Scale 2', self.axes['r_scale2'])
+            }
+            
+            # 4. 為每個勾選的範圍繪製對應的時間序列圖表
+            for ax_name, (col_name, ax) in plot_config.items():
+                if col_name in full_data_ref.columns:
+                    # 遍歷提取出來的每一組獨立單圈數據
+                    for index, range_df in enumerate(range_info_list):
+                        item_data = checked_items[index]
+                        label_name = item_data.get('label', f'Run {item_data["id"]}')
+                        
+                        # 繪製主畫布
+                        ax.plot(range_df.index, range_df[col_name], '-', linewidth=1, label=label_name)
+
+                        # 同步繪製選中範圍畫布
+                        selected_ax = axes[list(plot_config.keys()).index(ax_name)]
+                        selected_ax.plot(range_df.index, range_df[col_name], '-', linewidth=1, label=label_name)
+
+                    # 設置主圖表美化屬性
+                    ax.set_title(col_name, 
+                               fontsize=7,
+                               fontfamily='sans-serif',
+                               loc='left',
+                               pad=10,
+                               bbox=dict(facecolor='black', edgecolor='none', pad=3.0, alpha=1.0),
+                               color='white')
+                    ax.grid(True, alpha=0.3)
+                    ax.tick_params(axis='both', labelsize=8)
+                    if len(checked_items) > 1:
+                        ax.legend(fontsize=8, loc='upper left')
+                    
+                    # 設置選中範圍子圖表的屬性
+                    selected_ax = axes[list(plot_config.keys()).index(ax_name)]
+                    selected_ax.set_title(col_name, fontsize=10, loc='left', pad=10)
+                    selected_ax.grid(True)
+                    selected_ax.set_xlabel('索引')
+                    selected_ax.set_ylabel(col_name)
+                    if len(checked_items) > 1:
+                        selected_ax.legend(loc='upper left')
+            
+            # 5. 調整佈局並刷新畫布
             self.figure.tight_layout()
             canvas.figure.tight_layout()
             self.figure.canvas.draw()
             canvas.draw()
             
-            # 繪製軌跡圖
-            self.plot_track_for_ranges(checked_items, full_data, track_ax, track_canvas)
+            # 6. 直接呼叫繪製多色重疊軌跡，內部已包含安全路由，不重複提取
+            self.plot_track_for_ranges_direct(range_info_list, checked_items, track_ax, track_canvas)
             
-            print("\n=== Run資料輸出完成 ===")
+            print("\n=== Run 資料輸出完成 ===")
             return True
             
         except Exception as e:
-            print(f"繪製選中Run時出錯: {str(e)}")
+            print(f"繪製選中 Run 時出錯: {str(e)}")
             import traceback
             traceback.print_exc()
             return False
-
-    def extract_range_data(self, checked_items, full_data):
-        """將每個範圍資料與索引包裝成模組化結構（支援單一 DataFrame 與多檔 list 結構）"""
-        print(f"[DEBUG] [extract_range_data] checked_items: {checked_items}")
-        packaged_ranges = []
-        current_index = 0
-
-        for item in checked_items:
-            description = item['description']
-            range_id = item['id']
-            label = item.get('label', f'Run {range_id}')
-            
-            # 安全解析 start_index 與 end_index
-            try:
-                start_idx = int(description.split(',')[0].split(':')[1])
-                end_idx = int(description.split(',')[1].split(':')[1])
-            except Exception as parse_err:
-                print(f"[extract_range_data] 解析索引描述失敗: {description}, 錯誤: {parse_err}")
-                continue
-                
-            range_length = end_idx - start_idx + 1
-
-            # --- 【關鍵修正：動態識別數據源】 ---
-            if isinstance(full_data, list):
-                # 如果是多檔案 list，目前單圈切割索引（Run）皆是以第一檔資料 (df1) 為基準分析出來的
-                if len(full_data) > 0 and isinstance(full_data[0], pd.DataFrame):
-                    source_df = full_data[0]
-                else:
-                    print("[extract_range_data] 錯誤：傳入的 full_data 串列為空或元素非 DataFrame")
-                    continue
-            else:
-                source_df = full_data  # 常規單一 DataFrame 情況
-
-            # 安全地從正確的數據源進行切片與深拷貝
-            try:
-                df = source_df.iloc[start_idx:end_idx+1].copy()
-                df.reset_index(drop=True, inplace=True)
-            except Exception as slice_err:
-                print(f"[extract_range_data] 擷取資料切片失敗 (範圍 {start_idx}-{end_idx}): {slice_err}")
-                continue
-
-            # 移動平均濾波（保持您原有的 WMA 配置邏輯）
-            if self.combo_selection is not None:
-                df = self.weighted_moving_average(window_size=int(self.combo_selection), pending_data=df)
-
-            # 儲存封裝資訊
-            packaged_ranges.append({
-                'range_id': range_id,
-                'label': label,
-                'original_range': (start_idx, end_idx),
-                'remapped_range': (current_index, current_index + range_length - 1),
-                'data': df
-            })
-
-            current_index += range_length
-            
-        print(f"[DEBUG] [extract_range_data] packaged_ranges 封裝完成，共 {len(packaged_ranges)} 組")
-        return packaged_ranges
-
-
-
-    def plot_track_for_ranges(self, checked_items, full_data, track_ax, track_canvas):
-        """繪製軌跡圖（已修正：支援多檔案 list 結構）"""
+    def plot_track_for_ranges_direct(self, range_info_list, checked_items, track_ax, track_canvas):
+        """
+        直接為選中的多個單圈範圍繪製重疊的位置軌跡圖。
+        採用與主圖表相同的色系，方便交叉比對。（已修正 'datalim' 拼寫錯誤）
+        """
         try:
+            if not track_ax or not track_canvas:
+                print("[plot_track_for_ranges_direct] 警告：軌跡畫布元件不存在，跳過繪製")
+                return
+            
+            # 1. 先清空原本的地圖/軌跡圖軸
             track_ax.clear()
             
-            # --- 【關鍵修正：動態識別數據源，獲取欄位名稱】 ---
-            if isinstance(full_data, list):
-                if len(full_data) > 0 and isinstance(full_data[0], pd.DataFrame):
-                    source_df = full_data[0]
+            # 使用與主序列圖對應的顏色迴圈
+            color_cycle = ['b', 'g', 'r', 'm', 'c', 'y', 'k']
+            
+            print("[plot_track_for_ranges_direct] 開始繪製多單圈重疊軌跡...")
+            
+            # 2. 迭代繪製每個單圈的經緯度軌跡
+            for index, range_df in enumerate(range_info_list):
+                if 'Longitude' in range_df.columns and 'Latitude' in range_df.columns:
+                    item_data = checked_items[index]
+                    label_name = item_data.get('label', f'Run {item_data["id"]}')
+                    color = color_cycle[index % len(color_cycle)]
+                    
+                    # 繪製單圈軌跡線
+                    track_ax.plot(
+                        range_df['Longitude'], 
+                        range_df['Latitude'], 
+                        '-', 
+                        linewidth=2, 
+                        color=color, 
+                        label=label_name
+                    )
+                    
+                    # 標註該圈的起點（用圓點標示）
+                    if len(range_df) > 0:
+                        track_ax.scatter(
+                            range_df['Longitude'].iloc[0], 
+                            range_df['Latitude'].iloc[0], 
+                            color=color, 
+                            marker='o', 
+                            s=40, 
+                            zorder=5
+                        )
                 else:
-                    print("[plot_track_for_ranges] 錯誤：傳入的 full_data 串列為空或元素非 DataFrame")
-                    return
-            else:
-                source_df = full_data  # 常規單一 DataFrame 情況
+                    print(f"[plot_track_for_ranges_direct] 警告：第 {index+1} 組數據缺少 Longitude 或 Latitude 欄位")
+            
+            # 3. 圖表美化、比例尺對齊與標籤
+            track_ax.set_title("選定單圈 - 重疊軌跡對比", fontsize=10, pad=10)
+            track_ax.set_xlabel("經度 (Longitude)")
+            track_ax.set_ylabel("緯度 (Latitude)")
+            track_ax.grid(True, alpha=0.4)
+            
+            # 【完美修正】將原本的 'dataclim' 修改為 Matplotlib 支援的官方參數 'datalim'
+            track_ax.set_aspect('equal', adjustable='datalim')
+            
+            # 如果有多個 Run 則顯示圖例
+            if len(range_info_list) > 1:
+                track_ax.legend(loc='best', fontsize=9)
+            
+            # 4. 刷新畫布
+            track_canvas.draw()
+            print("[plot_track_for_ranges_direct] 重疊軌跡圖更新成功！")
+            
+        except Exception as e:
+            print(f"[plot_track_for_ranges_direct] 繪製多圈軌跡時發生錯誤: {str(e)}")
+            import traceback
+            traceback.print_exc()
 
-            # 從正確的數據源判定座標列名
-            x_col = 'X' if 'X' in source_df.columns else 'Longitude'
-            y_col = 'Y' if 'Y' in source_df.columns else 'Latitude'
+
+    def extract_range_data(self, checked_items, full_data):
+        """從全域數據中提取選定的範圍數據，並完美保留多數據集結構"""
+        try:
+            print(f"[DEBUG] [extract_range_data] 開始提取數據，checked_items 數量: {len(checked_items)}")
             
-            # 創建一個新的 DataFrame 來存儲第一個選中Run的數據
-            combined_data = pd.DataFrame()
+            # 用於存儲切片後的所有單圈 DataFrame 串列
+            extracted_dfs = []
+            self.range_index_mapping = {}  # 紀錄對齊映射關係
             
-            reversed_items = list((checked_items))
-            # 繪製每個選中Run的軌跡
-            for index, item_data in enumerate(reversed_items):
+            for index, item_data in enumerate(checked_items):
                 description = item_data['description']
                 range_id = item_data['id']
+                
+                # 解析起止索引
                 indices = {}
                 for pair in description.split(','):
                     key, value = pair.split(':')
@@ -1727,35 +1798,89 @@ class PlotManager:
                 start_idx = indices['start_index']
                 end_idx = indices['end_index']
                 
-                # --- 【關鍵修正：切片時同樣要區分數據源】 ---
-                range_data = source_df.iloc[start_idx:end_idx+1].copy()
-                range_data.reset_index(drop=True, inplace=True)
+                # --- 【關鍵動態路由邏輯】 ---
+                # 判定當前勾選的範圍應該從哪一個原始 DataFrame 中提取
+                if isinstance(full_data, list):
+                    # 在多檔案情況下，按 checked_items 的順序對應到對應的檔案 DataFrame
+                    # 如果 checked_items 數量與 full_data 長度一致，則 index 就是對應檔案的 index
+                    file_idx = index if index < len(full_data) else 0
+                    source_df = full_data[file_idx]
+                    print(f"[DEBUG] Run {range_id} 對應到多檔案列表中的第 {file_idx + 1} 筆檔案")
+                else:
+                    source_df = full_data
                 
-                # 只保存第一個選中Run的數據用於索引
-                if index == len(reversed_items) - 1:  # 第一個選中的Run
-                    combined_data = range_data
+                # 安全切片提取
+                range_df = source_df.iloc[start_idx:end_idx + 1].copy()
+                range_df.reset_index(drop=True, inplace=True)
                 
-                # 使用重設後的索引繪製軌跡
-                x_data = range_data[x_col]
-                y_data = range_data[y_col]
-                # 設置zorder，確保第一個選中的Run在最上層
+                # 保存原始索引映射關係，供後續點擊連動還原
+                self.range_index_mapping[range_id] = {
+                    'original_start': start_idx,
+                    'original_end': end_idx,
+                    'file_index': index if isinstance(full_data, list) else 0
+                }
+                
+                extracted_dfs.append(range_df)
+            
+            print(f"[DEBUG] 成功提取 {len(extracted_dfs)} 組單圈數據集")
+            return extracted_dfs
+            
+        except Exception as e:
+            print(f"提取範圍數據時出錯: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return []
+
+
+
+    def plot_track_for_ranges(self, checked_items, full_data, track_ax, track_canvas):
+        """繪製多單圈重疊軌跡圖（完美支援多數據集對比）"""
+        try:
+            track_ax.clear()
+            
+            # 首先提取所有選中 Run 的獨立 DataFrame 列表
+            # 此時 range_data_list 的長度會與勾選的範圍數量完全一致！
+            range_data_list = self.extract_range_data(checked_items, full_data)
+            
+            if not range_data_list:
+                print("[plot_track_for_ranges] 警告：無有效切片數據可供繪製")
+                return
+                
+            # 遍歷提取出來的每一組數據集並分層繪製（疊圖）
+            for index, item_data in enumerate(checked_items):
+                if index >= len(range_data_list):
+                    break
+                    
+                range_id = item_data['id']
+                range_df = range_data_list[index]
+                
+                # 自動偵測經緯度欄位名稱
+                x_col = 'X' if 'X' in range_df.columns else 'Longitude'
+                y_col = 'Y' if 'Y' in range_df.columns else 'Latitude'
+                
+                x_data = range_df[x_col]
+                y_data = range_df[y_col]
+                
+                # 分層繪製各組數據，並貼上對應的標籤
                 zorder = index + 1
                 track_ax.plot(x_data, y_data, label=f'Run {range_id}', zorder=zorder)
+                print(f"-> 已成功繪製數據集: Run {range_id}，總點數: {len(range_df)}")
             
-            # 存儲第一個選中Run的數據供後續使用
-            self.combined_track_data = combined_data
+            # 核心緩存：保存第一組被選中的 Run 作為點擊對齊的主參照物
+            self.combined_track_data = range_data_list[0]
             
-            # 設置軌跡圖屬性
-            track_ax.set_title('位置軌跡圖')
+            # 重新配置圖表外觀與圖例
+            track_ax.set_title('位置軌跡圖 (單圈重製對比)')
             track_ax.legend()
             track_ax.grid(True)
             track_ax.set_aspect('equal', adjustable='datalim')
             
-            # 更新軌跡圖
+            # 刷新畫布
             track_canvas.draw()
+            print("=== 多數據集單圈重製圖表更新成功 ===")
             
         except Exception as e:
-            print(f"繪製軌跡圖時出錯: {str(e)}")
+            print(f"繪製多單圈軌跡圖時出錯: {str(e)}")
             import traceback
             traceback.print_exc()
 
