@@ -884,78 +884,86 @@ class PlotManager:
         self.is_setting_start_point = True
         print("請在位置軌跡圖上選擇起點")
 
-    def set_start_point(self, index, track_ax, track_canvas):
-        """設定起點（已補上全面防禦，徹底根除 cannot remove artist 錯誤）"""
+    def set_start_point(self, index, track_ax=None, track_canvas=None):
+        """
+        設定新的單圈起點位置（已精簡：全域統一為多檔/列表架構，移除非必要 DataFrame 盲抓）
+        """
         try:
-            # 確保 index 是整數類型
             index = int(index)
             
+            # 因為現在一定都是 list 結構，直接安全拿取第 1 筆檔案作為基準即可
+            if hasattr(self, 'data_list') and isinstance(self.data_list, list) and len(self.data_list) > 0:
+                data = self.data_list[0]
+            else:
+                print("[set_start_point] 錯誤：找不到任何已載入的數據列表，取消設定起點。")
+                return
+
+            if index < 0 or index >= len(data):
+                print(f"[set_start_point] 錯誤：選定的索引 {index} 超出資料範圍 (0 - {len(data)-1})")
+                return
+
             # 儲存起點資訊
             self.start_point = index
             self.has_start_point_set = True
             self.start_point_data = {'x': index}
             
-            # 獲取選中點的座標，處理不同的列名情況
-            data = self.data_list[0]  # 使用第一個數據集
             x_col = 'X' if 'X' in data.columns else 'Longitude'
             y_col = 'Y' if 'Y' in data.columns else 'Latitude'
-            
             x = data[x_col].iloc[index]
             y = data[y_col].iloc[index]
             
-            # 更新軌跡圖上的點
-            self.update_track_point(index, track_ax, track_canvas)
-            print(f"已更新軌跡圖上的點 clsaa name {self.update_track_point.__name__}")
+            # 自動從主視窗補齊畫布元件參照
+            from PyQt5.QtWidgets import QApplication
+            from ui.map_viewer import MapViewer
+            main_win = None
+            for widget in QApplication.topLevelWidgets():
+                if isinstance(widget, MapViewer):
+                    main_win = widget
+                    break
+                    
+            if track_ax is None and main_win is not None:
+                track_ax = main_win.track_ax
+            if track_canvas is None and main_win is not None:
+                track_canvas = main_win.track_canvas
+
+            if track_ax is not None and track_canvas is not None:
+                self.update_track_point(index, track_ax, track_canvas)
             
-            # --- 【核心安全修正：防禦性清除舊的起點標記線】 ---
+            # 重新繪製起點線
             if hasattr(self, 'start_point_line') and self.start_point_line:
                 for line in self.start_point_line:
                     try:
-                        if line is not None:
-                            line.remove()
+                        if line is not None: line.remove()
                     except (NotImplementedError, ValueError, AttributeError):
-                        pass  # 補上安全捕獲：忽略已被畫布提前洗掉或失效的 Artist 物件
-                self.start_point_line = None
-            
+                        pass
             self.start_point_line = []
             
-            # 為主圖表添加垂直線並更新顯示
-            for ax_name, ax in self.axes.items():
-                if ax is not None:
-                    line = ax.axvline(x=index, color='green', linestyle='--', linewidth=2)
-                    self.start_point_line.append(line)
-                    try:
-                        ax.figure.canvas.draw_idle()  # 使用低消耗的延遲局部刷新代替立即強制重繪
-                    except Exception:
-                        pass
+            if self.axes:
+                for ax_name, ax_obj in self.axes.items():
+                    if ax_obj is not None:
+                        line = ax_obj.axvline(x=index, color='green', linestyle='--', linewidth=2)
+                        self.start_point_line.append(line)
+                self.figure.canvas.draw_idle()
             
-            # 計算1公分的數據單位長度
-            try:
-                y_range = track_ax.get_ylim()[1] - track_ax.get_ylim()[0]
-                fig_height_inches = track_ax.figure.get_size_inches()[1]
-                one_cm_data_units = (y_range / (fig_height_inches * 2.54))  # 轉換1公分到數據單位
-                
-                # 在軌跡圖上添加垂直線（向上下各延伸1公分）
-                track_line = track_ax.plot([x, x], 
-                                         [y - one_cm_data_units, y + one_cm_data_units], 
-                                         color='green',
-                                         linestyle='--',
-                                         linewidth=2)[0]
-                self.start_point_line.append(track_line)
-            except Exception as e_track:
-                print(f"[set_start_point] 在軌跡圖上畫綠色標記線時跳過: {e_track}")
+            if track_ax is not None and track_canvas is not None:
+                try:
+                    y_range = track_ax.get_ylim()[1] - track_ax.get_ylim()[0]
+                    fig_height_inches = track_ax.figure.get_size_inches()[1]
+                    one_cm_data_units = (y_range / (fig_height_inches * 2.54))
+                    track_line = track_ax.plot([x, x], [y - one_cm_data_units, y + one_cm_data_units], 
+                                             color='green', linestyle='--', linewidth=2)[0]
+                    self.start_point_line.append(track_line)
+                    track_canvas.draw_idle()
+                except Exception as e_track:
+                    print(f"[set_start_point] 在軌跡圖上畫綠色標記線時跳過: {e_track}")
             
-            # 更新軌跡圖顯示
-            track_canvas.draw_idle()
-            
-            # 呼叫 analyze_ranges 進行分析
-            self.analyze_ranges(index)
-            print(f"起點已設定在索引: {index}")
+            # 呼叫並執行單圈探勘切割
+            self.analyze_ranges(index, self.data_list)
+            print(f"起點已成功設定在索引: {index}")
             
         except Exception as e:
             print(f"設定起點時出錯: {str(e)}")
-            import traceback
-            traceback.print_exc()
+    
     def _draw_start_point_line(self):
         """重新繪製起點標記線"""
         if not self.has_start_point_set or self.start_point_data is None:
@@ -1271,113 +1279,8 @@ class PlotManager:
         """設置範圍更新回調函數"""
         self.range_update_callback = callback
 
-    def analyze_ranges2(self, start_index):
-        """分析數據範圍"""
-        try:
-            # 創建進度對話框
-            progress = QProgressDialog("分析數據範圍中...", None, 0, 0)
-            progress.setWindowModality(Qt.WindowModal)
-            progress.setWindowTitle("請稍候")
-            progress.setCancelButton(None)
-            progress.setMinimumDuration(0)
-            progress.setWindowFlags(
-                progress.windowFlags() & ~Qt.WindowCloseButtonHint
-            )
-            progress.show()
-            
-            QApplication.processEvents()
-            
-            data = self.data_list[0]
-            #print(f'[DEBUG] : \n{data}')
-            data['Time'] = pd.to_datetime(data['Time'])
-            
-            x_col = 'X' if 'X' in data.columns else 'Longitude'
-            y_col = 'Y' if 'Y' in data.columns else 'Latitude'
-
-            #保留 start_index 取出的座標
-            start_x = data[x_col].iloc[start_index]
-            start_y = data[y_col].iloc[start_index]
-            
-            tolerance = 0.00004  # 座標容差
-            
-            ranges = []
-            current_range = 1
-            last_match_index = None
-            in_range = False
-
-            #從第一筆開始遍歷
-            for i in range(len(data)):
-                if i % 100 == 0:
-                    progress.setLabelText(f"分析數據範圍中...\n已處理: {i}/{len(data)} 筆數據")
-                    QApplication.processEvents()
-                
-                current_x = data[x_col].iloc[i]
-                current_y = data[y_col].iloc[i]
-                current_time = data['Time'].iloc[i]
-                
-                x_match = abs(current_x - start_x) <= tolerance
-                y_match = abs(current_y - start_y) <= tolerance
-                
-                if x_match and y_match:
-                    if not in_range:
-                        if last_match_index is not None:
-                            time_diff = (current_time - data['Time'].iloc[last_match_index]).total_seconds()
-                        
-                            if time_diff >= 5:
-                                # 計算該範圍內的資料筆數
-                                data_count = i - last_match_index + 1
-                                
-                                print(f"\n找到範圍 {current_range}:")
-                                print(f"起點: 索引 {last_match_index}")
-                                print(f"  座標: ({data[x_col].iloc[last_match_index]}, {data[y_col].iloc[last_match_index]})")
-                                print(f"  時間: {data['Time'].iloc[last_match_index]}")
-                                print(f"終點: 索引 {i}")
-                                print(f"  座標: ({current_x}, {current_y})")
-                                print(f"  時間: {current_time}")
-                                print(f"資料筆數: {data_count}")
-                                
-                                hours = int(time_diff // 3600)
-                                minutes = int((time_diff % 3600) // 60)
-                                seconds = int(time_diff % 60)
-                                time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-                                print(f"時間差: {time_str}")
-                                print("---")
-                                
-                                ranges.append({
-                                    'range_number': current_range,
-                                    'start_index': last_match_index,
-                                    'end_index': i,
-                                    'start_time': data['Time'].iloc[last_match_index],
-                                    'end_time': current_time,
-                                    'duration': time_diff,
-                                    'duration_str': time_str,
-                                    'data_count': data_count  # 新增資料筆數
-                                })
-                                
-                                current_range += 1
-                                in_range = True
-                    last_match_index = i
-                else:
-                    if in_range:
-                        in_range = False
-            
-            progress.close()
-            
-            if self.range_update_callback:
-                self.range_update_callback(ranges)
-            
-            return ranges
-            
-        except Exception as e:
-            if 'progress' in locals():
-                progress.close()
-            print(f"分析範圍時出錯: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return []
-
-    def analyze_ranges(self, start_index):
-        """分析數據範圍（已徹底重構：完美支援多個 CSV 檔案同步切割單圈）"""
+    def analyze_ranges(self, start_index, current_data=None):
+        """分析數據範圍（已修正：正式加入 current_data 接口，解決 positional arguments 數量不符崩潰）"""
         try:
             # 創建進度對話框
             progress = QProgressDialog("多檔案單圈同步分析中...", None, 0, 0)
