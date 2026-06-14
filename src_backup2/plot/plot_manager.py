@@ -1633,7 +1633,7 @@ class PlotManager:
     def plot_track_for_ranges_direct(self, range_info_list, checked_items, track_ax, track_canvas):
         """
         直接為選中的多個單圈範圍繪製重疊的位置軌跡圖。
-        （已修正：顏色由 range_id 絕對綁定，確保與主時序圖顏色完美統一對齊）
+        （已徹底修正：加入 X/Y 與 Longitude/Latitude 欄位動態適應，根除多檔經緯度錯位變垂直線 Bug）
         """
         try:
             if not track_ax or not track_canvas:
@@ -1645,46 +1645,63 @@ class PlotManager:
             
             print("[plot_track_for_ranges_direct] 開始繪製多單圈重疊軌跡...")
             
-            # 2. 迭代繪製每個單圈的經緯度軌跡
+            # 2. 迭代繪製每個單圈的位置軌跡
             for index, range_df in enumerate(range_info_list):
+                item_data = checked_items[index]
+                range_id = item_data['id']
+                label_name = item_data.get('label', f'Run {range_id}')
+                
+                # ✨【核心修正：動態相容欄位偵測，避免數據讀空變直線】
+                x_col = None
+                y_col = None
+                
                 if 'Longitude' in range_df.columns and 'Latitude' in range_df.columns:
-                    item_data = checked_items[index]
-                    range_id = item_data['id']
-                    label_name = item_data.get('label', f'Run {range_id}')
-                    
-                    # ✨【顏色統一修正點 2】地圖軌跡線與起點圓點，完全使用與上方圖表相同的絕對 range_id 配色
+                    x_col = 'Longitude'
+                    y_col = 'Latitude'
+                elif 'X' in range_df.columns and 'Y' in range_df.columns:
+                    x_col = 'X'
+                    y_col = 'Y'
+                
+                # 如果能成功抓到座標欄位
+                if x_col and y_col:
                     track_color = self.colors[(range_id - 1) % len(self.colors)]
                     
-                    # 繪製單圈軌跡線
-                    track_ax.plot(
-                        range_df['Longitude'], 
-                        range_df['Latitude'], 
-                        '-', 
-                        linewidth=2, 
-                        color=track_color,  # 👈 使用絕對綁定色
-                        label=label_name
-                    )
+                    # 提取不含缺失值的有效座標
+                    valid_data = range_df[[x_col, y_col]].dropna()
                     
-                    # 標註該圈的起點（用圓點標示）
-                    if len(range_df) > 0:
+                    if not valid_data.empty:
+                        # 繪製單圈軌跡線
+                        track_ax.plot(
+                            valid_data[x_col], 
+                            valid_data[y_col], 
+                            '-', 
+                            linewidth=2, 
+                            color=track_color, 
+                            label=label_name
+                        )
+                        
+                        # 標註該圈的起點（用圓點標示）
                         track_ax.scatter(
-                            range_df['Longitude'].iloc[0], 
-                            range_df['Latitude'].iloc[0], 
-                            color=track_color,  # 👈 同步圓點顏色
+                            valid_data[x_col].iloc[0], 
+                            valid_data[y_col].iloc[0], 
+                            color=track_color, 
                             marker='o', 
                             s=40, 
                             zorder=5
                         )
+                        print(f"-> 成功繪製 Run {range_id} 軌跡，使用欄位: {x_col}/{y_col}, 點數: {len(valid_data)}")
+                    else:
+                        print(f"[plot_track_for_ranges_direct] 警告：Run {range_id} 座標數據為空，無法繪製")
                 else:
-                    print(f"[plot_track_for_ranges_direct] 警告：第 {index+1} 組數據缺少 Longitude 或 Latitude 欄位")
+                    print(f"[plot_track_for_ranges_direct] 錯誤：Run {range_id} 結構中找不到任何 'X/Y' 或 'Longitude/Latitude' 欄位！欄位清單為: {list(range_df.columns)}")
             
             # 3. 圖表美化、比例尺對齊與標籤
             track_ax.set_title("選定單圈 - 重疊軌跡對比", fontsize=10, pad=10)
-            track_ax.set_xlabel("經度 (Longitude)")
-            track_ax.set_ylabel("緯度 (Latitude)")
+            track_ax.set_xlabel("經度 / X 軸")
+            track_ax.set_ylabel("緯度 / Y 軸")
             track_ax.grid(True, alpha=0.4)
             
-            # 強制維持經緯度 1:1 地理比例，避免地圖變形
+            # 強制維持地理 1:1 比例，防止地圖變形
             track_ax.set_aspect('equal', adjustable='datalim')
             
             # 如果有多個 Run 則顯示圖例
@@ -1699,6 +1716,7 @@ class PlotManager:
             print(f"[plot_track_for_ranges_direct] 繪製多圈軌跡時發生錯誤: {str(e)}")
             import traceback
             traceback.print_exc()
+            
     def extract_range_data(self, checked_items, full_data):
         """從全域數據中提取選定的範圍數據，並完美保留多數據集結構"""
         try:
