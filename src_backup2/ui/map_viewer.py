@@ -54,7 +54,7 @@ class MapViewer(QMainWindow):
         self.set_start_button = QPushButton("設定起點")  # 在這裡創建按鈕
         self.update_button = QPushButton("更新圖表")
         self.switch_lap_button = QPushButton("繪製單圈與重製單圈")
-        self.standard_deviation_button = QPushButton("WMA濾波")
+        self.standard_deviation_button = QPushButton("濾波")
         self.load_multiple_button = QPushButton("載入多個CSV")
         
 
@@ -1060,49 +1060,94 @@ class MapViewer(QMainWindow):
             QMessageBox.critical(self, "錯誤", f"切換單圈時出錯：{str(e)}")
 
     def standard_deviation_button_clicked(self):
-        # 創建新的視窗
+        """開啟 DSP 濾波配置視窗 (包含類型與階數選擇)"""
+        # 創建新的視窗容器
         self.popup_window = QWidget()
-        self.popup_window.setWindowTitle("選擇數字")
-        self.popup_window.setGeometry(100, 100, 250, 50)
+        self.popup_window.setWindowTitle("數位濾波配置 (DSP)")
+        self.popup_window.setGeometry(200, 200, 300, 180) # 稍微加大視窗以容納更多控制項
 
-        # 設置垂直布局
+        # 設置主垂直佈局
         layout = QVBoxLayout(self.popup_window)
+        layout.setSpacing(10)
 
-        # 添加標籤
-        label = QLabel("請選擇一個數字:")
-        layout.addWidget(label)
+        # --- 第一部分：選擇濾波器類型 ---
+        type_label = QLabel("選擇濾波器類型:")
+        layout.addWidget(type_label)
+        
+        self.filter_type_combo = QComboBox()
+        # 這裡的順序要對應後台路由支援的類型
+        # 使用 Friendly Name (後方括號標註 backend key)
+        self.filter_type_combo.addItem("加權移動平均 (WMA)", "WMA")
+        self.filter_type_combo.addItem("指數移動平均 (EMA)", "EMA")
+        
+        # 如果之前有選過類型，可以自動設回 (預設 WMA)
+        if hasattr(self, 'current_filter_type'):
+            index = self.filter_type_combo.findData(self.current_filter_type)
+            if index >= 0: self.filter_type_combo.setCurrentIndex(index)
+            
+        layout.addWidget(self.filter_type_combo)
 
-        # 添加下拉選單
+        # --- 第二部分：選擇滑動視窗大小 (階數) ---
+        size_label = QLabel("選擇濾波階數 (Window Size):")
+        layout.addWidget(size_label)
+
         self.combo_box = QComboBox()
-        numbers = [str(i) for i in range(0,101)]  # 產生 0~10 的數字選項
+        numbers = [str(i) for i in range(0, 101)]
         self.combo_box.addItems(numbers)
 
-        # 設置先前選擇的數值或預設為 0
+        # 設置先前選擇的數值或預設為 10
         if hasattr(self, 'selected_number'):
             self.combo_box.setCurrentText(str(self.selected_number))
         else:
-            self.combo_box.setCurrentIndex(0)
+            self.combo_box.setCurrentText("10")
 
         layout.addWidget(self.combo_box)
 
-        # 添加確認按鈕
-        confirm_button = QPushButton("確認")
+        # --- 第三部分：確認按鈕 ---
+        confirm_button = QPushButton("套用濾波")
+        confirm_button.setStyleSheet("""
+            QPushButton {
+                background-color: #28a745;
+                color: white;
+                font-weight: bold;
+                height: 30px;
+            }
+            QPushButton:hover { background-color: #218838; }
+        """)
         confirm_button.clicked.connect(self._confirm_selection)
         layout.addWidget(confirm_button)
 
-        # 顯示視窗
+        # 顯示配置視窗
         self.popup_window.show()
-
     def _confirm_selection(self):
+        """處理濾波配置確認，並觸發 PlotManager DSP 路由"""
+        try:
+            # 1. 讀取選取的濾波器類型 (從 ComboBox 的 Data 屬性拿取 'WMA' 或 'EMA' 字串)
+            self.current_filter_type = self.filter_type_combo.currentData()
+            
+            # 2. 讀取選取的階數
+            self.selected_number = int(self.combo_box.currentText())
+            
+            print(f'[DSP UI] 執行濾波 ─── 類型: {self.current_filter_type}, 階數: {self.selected_number}')
+            
+            # 3. 呼叫 PlotManager 內建的統一 DSP 路由中心
+            # 這會自動處理多檔案、計算濾波、對齊長度、並即時重繪雙邊圖表
+            self.plot_manager.apply_dsp_filter(
+                filter_type=self.current_filter_type, 
+                window_size=self.selected_number
+            )
+            
+            # 4. 更新同步狀態
+            self.plot_manager.set_combo_selection(self.selected_number)
 
-        # 儲存選擇的數值
-        self.selected_number = int(self.combo_box.currentText())
-        self.plot_manager.set_combo_selection(self.selected_number)
-        print(f'[DEBUG] 選擇的數字: {self.selected_number}')
-        self.apply_wma()
-
-        # 關閉視窗
-        self.popup_window.close()
+            # 5. 關閉配置視窗
+            if hasattr(self, 'popup_window'):
+                self.popup_window.close()
+                
+        except Exception as e:
+            QMessageBox.critical(self, "濾波錯誤", f"套用數位濾波時發生錯誤：\n{str(e)}")
+            import traceback
+            traceback.print_exc()
 
     def apply_wma(self):
         # 計算 WMA

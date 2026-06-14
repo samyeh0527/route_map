@@ -1854,90 +1854,120 @@ class PlotManager:
             import traceback
             traceback.print_exc()
 
-    def weighted_moving_average(self, window_size, pending_data=None):
+    def apply_dsp_filter(self, filter_type="WMA", window_size=10):
         """
-        計算加權移動平均（WMA）（已徹底重構：完美支援多檔案 List 結構，計算後自動即時重繪圖表）
+        全域統一 DSP 數位訊號處理路由控制中心
+        支援多檔案 List[DataFrame] 架構，計算後自動同步刷新雙邊畫布
+        
+        參數:
+            filter_type (str): 濾波器類型，支援 "WMA" (加權移動平均), "EMA" (指數移動平均)
+            window_size (int): 濾波階數 / 滑動視窗大小
         """
-        # 1. 安全防禦：如果完全沒有數據集，跳出警告
+        # 1. 基礎安全防禦
         if not self.data_list:
             msg_box = QMessageBox()
             msg_box.setIcon(QMessageBox.Warning)
             msg_box.setWindowTitle("警告")
-            msg_box.setText("目前沒有已載入的數據，無法進行 WMA 濾波計算。")
+            msg_box.setText("目前沒有已載入的數據，無法進行 DSP 濾波運算。")
             msg_box.setStandardButtons(QMessageBox.Ok)
             msg_box.exec_()
-            return None
-            
-        # 2. 視窗大小安全性檢查：若設為 0 或 1 視為不濾波，直接重刷原始圖表恢復常態
-        if window_size <= 1:
-            print(f"[WMA] 視窗大小為 {window_size}，恢復顯示原始未濾波數據。")
-            self.create_plots()
             return
-            
-        try:
-            print(f"\n[WMA] 開始進行 WMA 濾波分析，滑動視窗大小（階數）: {window_size}")
-            
-            # 建立權重陣列：例如 window_size=3，則 weights=[1, 2, 3]
-            weights = np.arange(1, window_size + 1)
-            weights_sum = weights.sum()
 
-            # 3. 核心優化：遍歷 data_list 中的每一個 CSV DataFrame
+        # 2. 還原原始數據防線：若視窗大小設為 0 或 1，視為不濾波，直接重新渲染原始圖表
+        if window_size <= 1:
+            print(f"[DSP] 偵測到參數 <= 1，主動恢復顯示原始未濾波數據。")
+            self.create_plots()
+            self._sync_main_win_track()
+            return
+
+        try:
+            print(f"\n[DSP RUNNER] 啟動數位訊號處理核心 ─── 類型: {filter_type}, 階數: {window_size}")
+            target_columns = ['R Scale 1', 'R Scale 2']  # 指定需要被低通平滑濾波的高頻噪訊欄位
+
+            # 3. 自動遍歷目前記憶體中所有的 CSV 數據集 (List 結構)
             for file_idx, df in enumerate(self.data_list):
                 if df is None or df.empty:
                     continue
-                    
-                print(f"[WMA] 正在對第 {file_idx + 1} 筆 CSV 檔案執行濾波平滑化...")
                 
-                # 針對指定的兩個 R Scale 欄位進行離散摺積平滑運算
-                for scale in ['R Scale 1', 'R Scale 2']:
+                # 建立一個臨時儲存經濾波處理後的新 DataFrame 容器
+                # 為了避免各欄位濾波長度縮減退化，在迴圈內動態對齊
+                min_offset = 0
+                temp_filtered_series = {}
+
+                for scale in target_columns:
                     if scale in df.columns:
-                        # 轉為 numpy 加速運算
                         series = df[scale].to_numpy()
                         
-                        # 執行 WMA 摺積 (mode='valid' 確保加權時邊緣數據物理正確)
-                        wma_values = np.convolve(series, weights[::-1], mode='valid') / weights_sum
-                        
-                        # 為了防範數據長度縮減退化，將未參與到濾波的前期時間與其他遙測欄位安全裁切對齊
-                        # 摺積後的長度會減少 (window_size - 1) 筆
-                        offset = len(df) - len(wma_values)
-                        
-                        # 先把當前檔案 DataFrame 的對齊切片切出來
-                        aligned_df = df.iloc[offset:].copy()
-                        
-                        # 將計算好的 WMA 平滑值覆蓋填回
-                        aligned_df[scale] = wma_values
-                        
-                        # 重設索引以確保與後續點擊連動、單圈重製的絕對索引系統完全一致
-                        aligned_df.reset_index(drop=True, inplace=True)
-                        
-                        # 將原 DataFrame 改寫覆蓋為濾波後的對齊 DataFrame
-                        df = aligned_df
-                
-                # 將處理完的 DataFrame 存回全域列表
-                self.data_list[file_idx] = df
+                        # ========================================================
+                        # 核心分流分組路由 1：加權移動平均 (WMA)
+                        # ========================================================
+                        if filter_type == "WMA":
+                            weights = np.arange(1, window_size + 1)
+                            weights_sum = weights.sum()
+                            # 離散摺積運算
+                            filtered_values = np.convolve(series, weights[::-1], mode='valid') / weights_sum
+                            offset = len(df) - len(filtered_values)
+                            min_offset = max(min_offset, offset)
+                            temp_filtered_series[scale] = filtered_values
 
-            print("[WMA] 所有數據集 WMA 濾波與長度時間軸對齊完成。")
-            
-            # 4. ✨【最核心修正：計算完畢後立即強制重新驅動圖表渲染】
-            # 這會強迫 3x1 的時序圖和座標軸拉取最新平滑化後的 data_list 重新繪線
-            self.figure.clear()
-            self.create_plots()
-            
-            # 如果主視窗有軌跡圖，同步重繪位置軌跡
-            from PyQt5.QtWidgets import QApplication
-            from ui.map_viewer import MapViewer
-            for widget in QApplication.topLevelWidgets():
-                if isinstance(widget, MapViewer):
-                    widget.plot_track_mulit()
-                    break
+                        # ========================================================
+                        # 核心分流分組路由 2：指數移動平均 (EMA) -> 反應速度快、無縫相容
+                        # ========================================================
+                        elif filter_type == "EMA":
+                            # 利用 Pandas 內建高度優化的 ewm (Exponential Weighted Moving) 進行無損計算
+                            # span=window_size 代表等效滑動視窗大小
+                            filtered_values = df[scale].ewm(span=window_size, adjust=False).mean().to_numpy()
+                            # EMA 特性為原長度輸出，因此不產生邊緣縮減對齊偏移 (offset=0)
+                            temp_filtered_series[scale] = filtered_values
+                            
+                        # ========================================================
+                        # (未來可擴充位置)：例如 Savitzky-Golay (SG) 濾波或卡爾曼濾波
+                        # ========================================================
+                        # elif filter_type == "SG":
+                        #     from scipy.signal import savgol_filter
+                        #     temp_filtered_series[scale] = savgol_filter(series, window_length=window_size, polyorder=2)
+
+                # 4. 資料長度與時間軸硬性裁剪對齊 (防止多檔案長度退化導致繪圖崩潰)
+                if temp_filtered_series:
+                    # 根據計算得出的最大 offset 進行 iloc 裁切
+                    aligned_df = df.iloc[min_offset:].copy()
                     
-            print("[WMA] 圖表畫布已成功刷新呈現平滑曲線。\n")
+                    # 將各演算法算好的平滑陣列，精確寫入對齊後的 DataFrame 中
+                    for scale, values in temp_filtered_series.items():
+                        # 如果演算法有縮減長度（如 WMA），values 的長度理應完美等於 len(aligned_df)
+                        # 如果演算法是原長度（如 EMA），我們需要對 values 進行對應切片以貼合 aligned_df
+                        if len(values) == len(df):
+                            aligned_df[scale] = values[min_offset:]
+                        else:
+                            aligned_df[scale] = values
+                    
+                    # 重設相對索引，確保點擊高亮、雙畫布絕對索引同步機制不脫節
+                    aligned_df.reset_index(drop=True, inplace=True)
+                    
+                    # 覆蓋寫回全域資料列表
+                    self.data_list[file_idx] = aligned_df
+                    print(f"[DSP] 第 {file_idx + 1} 筆 CSV 檔案【{filter_type}】濾波與索引重對齊完成。")
+
+            # 5. 數據清洗完畢，強制觸發畫布重新渲染
+            self.figure.clear()
+            self.create_plots()  # 重刷 3x1 主時序圖
+            self._sync_main_win_track()  # 重刷底部位置地圖
             
+            print(f"[DSP SUCCESS] 全模組數據已成功切換為 {filter_type} 平滑曲線並重新渲染畫布。\n")
+
         except Exception as e:
-            print(f"[WMA] 濾波運算或渲染時發生錯誤: {e}")
+            print(f"[DSP ROUTER ERROR] 濾波執行分支失敗: {e}")
             import traceback
             traceback.print_exc()
 
+    def _sync_main_win_track(self):
+        """內部輔助方法：自動向外尋找主視窗並重繪地圖軌跡"""
+        from PyQt5.QtWidgets import QApplication
+        from ui.map_viewer import MapViewer
+        for widget in QApplication.topLevelWidgets():
+            if isinstance(widget, MapViewer):
+                widget.plot_track_mulit()
+                break
     def set_combo_selection(self, selection):
         self.combo_selection = selection
            
