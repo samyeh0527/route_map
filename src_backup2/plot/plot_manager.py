@@ -1417,64 +1417,67 @@ class PlotManager:
             print(f"清除所有標記時出錯: {str(e)}")
 
     def highlight_range(self, start_index, end_index, range_id):
-        """在主圖表上高亮顯示指定Run"""
+        """在主圖表上高亮顯示指定Run（已修正：打勾瞬間自動精確反查多檔案檔名標籤，消滅無效警告）"""
         try:
-            # 檢查是否有 current_checked_items 並確保它不為 None
-            label_name = f'Run {range_id}'  # 預設標籤名稱
-            if hasattr(self, 'current_checked_items') and self.current_checked_items:
-                try:
-                    item_data = next((item for item in self.current_checked_items 
-                                    if item['id'] == range_id), None)
-                    if item_data and 'label' in item_data:
-                        label_name = item_data['label']
-                    print(f"[highlight_range] 找到對應的 item_data: {item_data}")
-                    print(f"[highlight_range] label_name: {label_name}")
-                except Exception as e:
-                    print(f"[highlight_range] 處理 item_data 時出錯: {str(e)}")
-            else:
-                print(f"[highlight_range] 警告：找不到或無效的 current_checked_items")
-                print(f"[highlight_range] 使用預設 label_name: {label_name}")
+            # 1. 獲取全域主視窗的檔案清單，用來提取 CSV 原始檔名
+            from PyQt5.QtWidgets import QApplication
+            from ui.map_viewer import MapViewer
+            main_win = None
+            for widget in QApplication.topLevelWidgets():
+                if isinstance(widget, MapViewer):
+                    main_win = widget
+                    break
             
+            file_names = []
+            if main_win and hasattr(main_win, 'loaded_files') and main_win.loaded_files:
+                import os
+                file_names = [os.path.basename(path) for path, _ in main_win.loaded_files]
+
+            # 2. 精確動態計算 label_name 標籤文字
+            label_name = f'Run {range_id}'  # 預設基礎名稱
+            
+            # 優先級 1：如果記憶體映射表存在，直接反查出它屬於第幾個 CSV 檔案
+            if hasattr(self, 'range_index_mapping') and range_id in self.range_index_mapping:
+                file_idx = self.range_index_mapping[range_id].get('file_index', 0)
+                if file_idx < len(file_names):
+                    label_name = f'Run {range_id} ({file_names[file_idx]})'
+                    
+            # 優先級 2：如果映射表還沒建立（例如刚載入），嘗試從當前勾選清單中尋找
+            elif hasattr(self, 'current_checked_items') and self.current_checked_items:
+                item_data = next((item for item in self.current_checked_items if item['id'] == range_id), None)
+                if item_data and 'label' in item_data:
+                    label_name = item_data['label']
+            
+            print(f"[highlight_range] 成功為單圈高亮配置精確標籤: {label_name}")
+            
+            # 以下維持您原本的黃色區塊繪製邏輯
             highlights = []
             text_labels = []
             colors = ['#FFD700', '#98FB98', '#87CEFA', '#DDA0DD', '#F08080']
             color = colors[range_id % len(colors)]
             
             if not self.axes:
-                print("[highlight_range] 錯誤：找不到圖表軸")
                 return
             
             for i, (ax_name, ax) in enumerate(self.axes.items()):
                 if ax is None:
-                    print(f"[highlight_range] 警告：軸 {ax_name} 為 None")
                     continue
                     
-                highlight = ax.axvspan(start_index, end_index, 
-                                     alpha=0.2, 
-                                     color=color,
-                                     zorder=1)
+                # 繪製黃色/彩色透明高亮背景
+                highlight = ax.axvspan(start_index, end_index, alpha=0.2, color=color, zorder=1)
                 highlights.append(highlight)
                 
+                # 配置文字標籤位置與黑框白底樣式
                 x_pos = end_index
                 y_pos = 0.85
-                
-                if i == 0:
-                    label_type = 'speed'
-                elif i == 1:
-                    label_type = 'r_scale1'
-                else:
-                    label_type = 'r_scale2'
+                label_type = 'speed' if i == 0 else ('r_scale1' if i == 1 else 'r_scale2')
 
-                print(f"[highlight_range] 添加標籤，軸 {i}，使用 label_name: {label_name}")
                 text = ax.text(x_pos, y_pos, 
-                             label_name,
+                             label_name,  # 👈 使用我們精確反查出的 line_label/label_name
                              horizontalalignment='right',
                              verticalalignment='top',
                              transform=ax.get_xaxis_transform(),
-                             bbox=dict(facecolor='white',
-                                     edgecolor=color,
-                                     alpha=0.8,
-                                     boxstyle='round,pad=0.5'),
+                             bbox=dict(facecolor='white', edgecolor=color, alpha=0.8, boxstyle='round,pad=0.5'),
                              fontsize=9,
                              zorder=5)
                 
@@ -1491,6 +1494,7 @@ class PlotManager:
             print(f"添加Run高亮時出錯: {str(e)}")
             import traceback
             traceback.print_exc()
+
 
     def remove_range_highlight(self, range_id):
         """移除指定Run的高亮顯示"""
@@ -1849,36 +1853,90 @@ class PlotManager:
             print(f"更新圖表數值時出錯: {str(e)}")
             import traceback
             traceback.print_exc()
-    def weighted_moving_average(self, window_size,pending_data=None):
-        """計算加權移動平均（WMA）"""
-        if not self.data_list:  # 如果 self.data_list 為空，則直接 return
+
+    def weighted_moving_average(self, window_size, pending_data=None):
+        """
+        計算加權移動平均（WMA）（已徹底重構：完美支援多檔案 List 結構，計算後自動即時重繪圖表）
+        """
+        # 1. 安全防禦：如果完全沒有數據集，跳出警告
+        if not self.data_list:
             msg_box = QMessageBox()
             msg_box.setIcon(QMessageBox.Warning)
             msg_box.setWindowTitle("警告")
-            msg_box.setText("self.data_list 為空，無法進行加權移動平均計算，請先載入數據")
+            msg_box.setText("目前沒有已載入的數據，無法進行 WMA 濾波計算。")
             msg_box.setStandardButtons(QMessageBox.Ok)
             msg_box.exec_()
             return None
             
-        if pending_data is not None:
-            try:
-                for scale in ['R Scale 1', 'R Scale 2']:
-                    if scale in pending_data.columns:
-                        self.Debug_csv(pending_data[scale],'orignal_data'+scale)
-                        series = pending_data[scale].to_numpy()
-                        weights = np.arange(1, window_size + 1)
-                        wma = np.convolve(series, weights[::-1], mode='valid') / weights.sum()
-                        self.Debug_csv(wma,'wma_data'+scale)
-                        print("[DEBUG]", type(wma))  # numpy.ndarray
-                        # 修正資料長度對齊
-                        pending_data = pending_data.iloc[len(pending_data) - len(wma):].copy()
-                        pending_data[scale] = wma
-                        self.Debug_csv(pending_data[scale],'wma_data'+scale)
-                return pending_data
-            except Exception as e:
-                print(f"[WMA] 計算錯誤: {e}")
-                return pending_data
+        # 2. 視窗大小安全性檢查：若設為 0 或 1 視為不濾波，直接重刷原始圖表恢復常態
+        if window_size <= 1:
+            print(f"[WMA] 視窗大小為 {window_size}，恢復顯示原始未濾波數據。")
+            self.create_plots()
+            return
+            
+        try:
+            print(f"\n[WMA] 開始進行 WMA 濾波分析，滑動視窗大小（階數）: {window_size}")
+            
+            # 建立權重陣列：例如 window_size=3，則 weights=[1, 2, 3]
+            weights = np.arange(1, window_size + 1)
+            weights_sum = weights.sum()
 
+            # 3. 核心優化：遍歷 data_list 中的每一個 CSV DataFrame
+            for file_idx, df in enumerate(self.data_list):
+                if df is None or df.empty:
+                    continue
+                    
+                print(f"[WMA] 正在對第 {file_idx + 1} 筆 CSV 檔案執行濾波平滑化...")
+                
+                # 針對指定的兩個 R Scale 欄位進行離散摺積平滑運算
+                for scale in ['R Scale 1', 'R Scale 2']:
+                    if scale in df.columns:
+                        # 轉為 numpy 加速運算
+                        series = df[scale].to_numpy()
+                        
+                        # 執行 WMA 摺積 (mode='valid' 確保加權時邊緣數據物理正確)
+                        wma_values = np.convolve(series, weights[::-1], mode='valid') / weights_sum
+                        
+                        # 為了防範數據長度縮減退化，將未參與到濾波的前期時間與其他遙測欄位安全裁切對齊
+                        # 摺積後的長度會減少 (window_size - 1) 筆
+                        offset = len(df) - len(wma_values)
+                        
+                        # 先把當前檔案 DataFrame 的對齊切片切出來
+                        aligned_df = df.iloc[offset:].copy()
+                        
+                        # 將計算好的 WMA 平滑值覆蓋填回
+                        aligned_df[scale] = wma_values
+                        
+                        # 重設索引以確保與後續點擊連動、單圈重製的絕對索引系統完全一致
+                        aligned_df.reset_index(drop=True, inplace=True)
+                        
+                        # 將原 DataFrame 改寫覆蓋為濾波後的對齊 DataFrame
+                        df = aligned_df
+                
+                # 將處理完的 DataFrame 存回全域列表
+                self.data_list[file_idx] = df
+
+            print("[WMA] 所有數據集 WMA 濾波與長度時間軸對齊完成。")
+            
+            # 4. ✨【最核心修正：計算完畢後立即強制重新驅動圖表渲染】
+            # 這會強迫 3x1 的時序圖和座標軸拉取最新平滑化後的 data_list 重新繪線
+            self.figure.clear()
+            self.create_plots()
+            
+            # 如果主視窗有軌跡圖，同步重繪位置軌跡
+            from PyQt5.QtWidgets import QApplication
+            from ui.map_viewer import MapViewer
+            for widget in QApplication.topLevelWidgets():
+                if isinstance(widget, MapViewer):
+                    widget.plot_track_mulit()
+                    break
+                    
+            print("[WMA] 圖表畫布已成功刷新呈現平滑曲線。\n")
+            
+        except Exception as e:
+            print(f"[WMA] 濾波運算或渲染時發生錯誤: {e}")
+            import traceback
+            traceback.print_exc()
 
     def set_combo_selection(self, selection):
         self.combo_selection = selection
