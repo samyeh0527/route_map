@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-
+import os  # 確保檔案頂部有 import os
 from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QPushButton, QFileDialog,
     QHBoxLayout, QLabel, QSpinBox, QMessageBox, QApplication, QListWidget, QListWidgetItem, QToolBar,QComboBox
@@ -578,6 +578,8 @@ class MapViewer(QMainWindow):
             
             # 更新圖表
             self.plot_manager.data_list = data_for_update  # ✅ 確保是一個 list of DataFrame
+            self.plot_manager.data_list = self.full_data_list  # 假設這裡面只有 data
+            self.plot_manager.file_names = [file_name for file_name, _ in self.loaded_files]
             self.plot_manager.create_plots()
             
             # 確保重新繪製所有圖表
@@ -1282,37 +1284,41 @@ class MapViewer(QMainWindow):
             del self.loaded_files[row]
 
 
+    
+
     def confirm_merge_files(self):
         """確認合併剩餘檔案，更新畫面"""
         if not self.loaded_files:
             QMessageBox.warning(self, "警告", "沒有檔案可合併")
             return
 
+        # 1. 提取所有載入檔案的檔名
+        # 假設 self.loaded_files 內元素的結構為 (file_path, dataframe)
+        file_names = [os.path.basename(path) for path, _ in self.loaded_files]
+        files_str = ", ".join(file_names)
+        
+        # 2. 在控制台或 UI 上顯示
+        print(f"\n[RUN] 開始執行數據處理！資料來源檔案: {files_str}")
+        
         all_data = [data for _, data in self.loaded_files]
-        #self.full_data = pd.concat(all_data, ignore_index=True)
         self.full_data_list = all_data
         print(f"總共合併了 {len(self.full_data_list)} 筆資料")
         self.full_data = self.full_data_list
-        # 更新主圖表
+        
+        # 更新主圖表與軌跡
         self.plot_manager.data_list = self.full_data_list
         self.plot_manager.create_plots()
         self.canvas.draw()
-
-        # 更新軌跡圖
         self.plot_track_mulit()
-
-        # 保存初始視圖
-        self.track_home_limits = {
-            'xlim': self.track_ax.get_xlim(),
-            'ylim': self.track_ax.get_ylim(),
-            'aspect': self.track_ax.get_aspect()
-        }
-        self.track_canvas.draw()
-        print("多檔案合併完成並更新圖表")
         
-        # 關閉管理視窗
-        self.file_manage_window.close()
+        # 如果有遮罩層提示，也可以動態修改遮罩文字
+        if hasattr(self, 'overlay_widget'):
+            self.overlay_widget.label.setText(f"處理中，來源：{file_names[0] if file_names else ''}...")
 
+        # ======= ✨【核心修正：完成後自動關閉子視窗】=======
+        if hasattr(self, 'file_manage_window') and self.file_manage_window is not None:
+            self.file_manage_window.close()
+            print("[UI FIX] 已自動關閉管理載入的 CSV 檔案子視窗。")
 
 
 
