@@ -1718,13 +1718,12 @@ class PlotManager:
             traceback.print_exc()
             
     def extract_range_data(self, checked_items, full_data):
-        """從全域數據中提取選定的範圍數據，並完美保留多數據集結構"""
+        """從全域數據中提取選定的範圍數據（已徹底修正：優化局部變數作用域，徹底根除 UnboundLocalError 崩潰）"""
         try:
             print(f"[DEBUG] [extract_range_data] 開始提取數據，checked_items 數量: {len(checked_items)}")
             
-            # 用於存儲切片後的所有單圈 DataFrame 串列
             extracted_dfs = []
-            self.range_index_mapping = {}  # 紀錄對齊映射關係
+            self.range_index_mapping = {}  
             
             for index, item_data in enumerate(checked_items):
                 description = item_data['description']
@@ -1739,26 +1738,63 @@ class PlotManager:
                 start_idx = indices['start_index']
                 end_idx = indices['end_index']
                 
-                # --- 【關鍵動態路由邏輯】 ---
-                # 判定當前勾選的範圍應該從哪一個原始 DataFrame 中提取
+                # ✨【全域兜底防線】先給定預設的檔案索引與數據源，防止變數未賦值
+                file_idx = 0
+                source_df = None
+                
+                # --- 精確動態路由邏輯 ---
                 if isinstance(full_data, list):
-                    # 在多檔案情況下，按 checked_items 的順序對應到對應的檔案 DataFrame
-                    # 如果 checked_items 數量與 full_data 長度一致，則 index 就是對應檔案的 index
-                    file_idx = index if index < len(full_data) else 0
+                    # 優先級 1：如果項目元數據中自帶 file_index，直接採用
+                    if 'file_index' in item_data:
+                        file_idx = int(item_data['file_index'])
+                        print(f"[ROUTE 1] Run {range_id} 透過 item_data 直讀 file_index: {file_idx}")
+                        
+                    # 優先級 2：從歷史探勘暫存的發現列表中反查
+                    elif hasattr(self, 'discovered_ranges') and self.discovered_ranges:
+                        found_in_discovered = False
+                        for r in self.discovered_ranges:
+                            if r.get('range_number') == range_id:
+                                file_idx = r.get('file_index', 0)
+                                found_in_discovered = True
+                                print(f"[ROUTE 2] Run {range_id} 透過 discovered_ranges 反查 file_index: {file_idx}")
+                                break
+                        
+                        # 優先級 3：如果歷史清單找不到，嘗試從記憶體對齊映射表中反查
+                        if not found_in_discovered and hasattr(self, 'range_index_mapping') and range_id in self.range_index_mapping:
+                            file_idx = self.range_index_mapping[range_id].get('file_index', 0)
+                            print(f"[ROUTE 3] Run {range_id} 透過 range_index_mapping 反查 file_index: {file_idx}")
+                    
+                    # 優先級 4：終極兜底防禦 ── 若上述手段皆宣告失敗，使用 range_id 循環取餘數
+                    else:
+                        file_idx = (range_id - 1) % len(full_data)
+                        print(f"[ROUTE 4] Run {range_id} 觸發餘數盲猜兜底 file_index: {file_idx}")
+                    
+                    # 🛡️ 確保安全，限制計算出來的 file_idx 絕對不會超出 full_data 列表的合法邊界
+                    file_idx = max(0, min(file_idx, len(full_data) - 1))
                     source_df = full_data[file_idx]
-                    print(f"[DEBUG] Run {range_id} 對應到多檔案列表中的第 {file_idx + 1} 筆檔案")
                 else:
+                    # 說明目前只有單一筆 DataFrame 檔案
                     source_df = full_data
+                    file_idx = 0
+                
+                # 終極安全防線：防範 source_df 依舊為 None 的極端狀況
+                if source_df is None:
+                    print(f"[extract_range_data] 嚴重錯誤：無法建立有效的 source_df，跳過 Run {range_id}")
+                    continue
+                    
+                # 確保 start_idx 与 end_idx 在當前 source_df 的安全範圍內
+                start_idx = max(0, min(start_idx, len(source_df) - 1))
+                end_idx = max(start_idx, min(end_idx, len(source_df) - 1))
                 
                 # 安全切片提取
                 range_df = source_df.iloc[start_idx:end_idx + 1].copy()
                 range_df.reset_index(drop=True, inplace=True)
                 
-                # 保存原始索引映射關係，供後續點擊連動還原
+                # 保存原始索引映射關係，供點擊連動還原絕對座標
                 self.range_index_mapping[range_id] = {
                     'original_start': start_idx,
                     'original_end': end_idx,
-                    'file_index': index if isinstance(full_data, list) else 0
+                    'file_index': file_idx
                 }
                 
                 extracted_dfs.append(range_df)

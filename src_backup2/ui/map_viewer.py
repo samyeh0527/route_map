@@ -908,7 +908,12 @@ class MapViewer(QMainWindow):
             # 創建列表項，格式：範圍1, 時間 00:00:00
             item_text = f"Run{range_info['range_number']}, 時間 {range_info['duration_str']}"
             item = QListWidgetItem(item_text)
-            item.setData(Qt.UserRole, {"id": range_info['range_number'], "description": f"start_index:{range_info['start_index']},end_index:{range_info['end_index']}"})
+            #item.setData(Qt.UserRole, {"id": range_info['range_number'], "description": f"start_index:{range_info['start_index']},end_index:{range_info['end_index']}"})
+            item.setData(Qt.UserRole, {
+                "id": range_info['range_number'], 
+                "file_index": range_info['file_index'],  # 👈 核心：死死綁定它屬於第幾檔 CSV
+                "description": f"start_index:{range_info['start_index']},end_index:{range_info['end_index']}"
+            })
             item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
             item.setCheckState(Qt.Unchecked)
             self.check_list.addItem(item)
